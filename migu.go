@@ -44,7 +44,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			case *ast.StarExpr:
 				typeName = "*" + t.X.(*ast.Ident).Name
 			default:
-				fmt.Printf("%#v\n", t)
+				return nil, fmt.Errorf("migu: BUG: unknown type %T", t)
 			}
 			f := field{
 				Type: typeName,
