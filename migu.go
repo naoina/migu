@@ -135,7 +135,7 @@ func mysqlType(name string) string {
 	case "int64":
 		return "BIGINT NOT NULL"
 	case "uint":
-		return "UNSIGNED INT NOT NULL"
+		return "INT UNSIGNED NOT NULL"
 	case "bool":
 		return "BOOLEAN NOT NULL"
 	case "float32", "float64":
