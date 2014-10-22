@@ -129,17 +129,17 @@ type field struct {
 func mysqlType(name string) string {
 	switch name {
 	case "string":
-		return "NOT NULL VARCHAR(255)"
+		return "VARCHAR(255) NOT NULL"
 	case "int":
-		return "NOT NULL INT"
+		return "INT NOT NULL"
 	case "int64":
-		return "NOT NULL BIGINT"
+		return "BIGINT NOT NULL"
 	case "uint":
-		return "NOT NULL UNSIGNED INT"
+		return "UNSIGNED INT NOT NULL"
 	case "bool":
-		return "NOT NULL BOOLEAN"
+		return "BOOLEAN NOT NULL"
 	case "float32", "float64":
-		return "NOT NULL DOUBLE"
+		return "DOUBLE NOT NULL"
 	case "sql.NullString", "*string":
 		return "VARCHAR(255)"
 	case "sql.NullBool", "*bool":
