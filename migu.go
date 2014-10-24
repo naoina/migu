@@ -198,6 +198,7 @@ SELECT
   CHARACTER_OCTET_LENGTH,
   NUMERIC_PRECISION,
   NUMERIC_SCALE,
+  COLUMN_TYPE,
   COLUMN_KEY,
   COLUMN_COMMENT
 FROM information_schema.COLUMNS
@@ -221,6 +222,7 @@ ORDER BY TABLE_NAME, ORDINAL_POSITION`
 			&schema.CharacterOctetLength,
 			&schema.NumericPrecision,
 			&schema.NumericScale,
+			&schema.ColumnType,
 			&schema.ColumnKey,
 			&schema.ColumnComment,
 		); err != nil {
@@ -297,6 +299,7 @@ type columnSchema struct {
 	CharacterOctetLength   sql.NullInt64
 	NumericPrecision       sql.NullInt64
 	NumericScale           sql.NullInt64
+	ColumnType             string
 	ColumnKey              string
 	ColumnComment          string
 }
@@ -318,9 +321,17 @@ func (schema *columnSchema) fieldAST() *ast.Field {
 func (schema *columnSchema) columnType() string {
 	switch schema.DataType {
 	case "tinyint", "smallint", "mediumint", "int":
-		return "int"
+		if schema.isUnsigned() {
+			return "uint"
+		} else {
+			return "int"
+		}
 	case "bigint":
-		return "int64"
+		if schema.isUnsigned() {
+			return "uint64"
+		} else {
+			return "int64"
+		}
 	case "varchar", "text":
 		return "string"
 	case "datetime":
@@ -328,4 +339,8 @@ func (schema *columnSchema) columnType() string {
 	default:
 		return "string"
 	}
+}
+
+func (schema *columnSchema) isUnsigned() bool {
+	return strings.Contains(schema.ColumnType, "unsigned")
 }
