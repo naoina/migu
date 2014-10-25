@@ -1,4 +1,4 @@
-# Migu
+# Migu [![Build Status](https://travis-ci.org/naoina/migu.png?branch=master)](https://travis-ci.org/naoina/migu)
 
 Database schema migration tool for [Go](http://golang.org).
 
