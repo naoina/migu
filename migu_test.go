@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"reflect"
+	"sort"
 	"testing"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -64,6 +65,8 @@ type User struct {
 	}
 	actual = results
 	expect = []string{`ALTER TABLE user MODIFY age INT UNSIGNED NOT NULL`}
+	sort.Strings(actual)
+	sort.Strings(expect)
 	if !reflect.DeepEqual(actual, expect) {
 		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
 	}
@@ -81,6 +84,8 @@ type User struct {
 	}
 	actual = results
 	expect = []string{`ALTER TABLE user DROP name`}
+	sort.Strings(actual)
+	sort.Strings(expect)
 	if !reflect.DeepEqual(actual, expect) {
 		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
 	}
@@ -95,6 +100,8 @@ type User struct {
 	}
 	actual = results
 	expect = []string{`DROP TABLE user`}
+	sort.Strings(actual)
+	sort.Strings(expect)
 	if !reflect.DeepEqual(actual, expect) {
 		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
 	}

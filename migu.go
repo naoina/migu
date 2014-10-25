@@ -71,7 +71,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 	var migrations []string
 	for _, name := range names {
 		model := structMap[name]
-		table, ok := tableMap[name]
+		columns, ok := tableMap[name]
 		tableName := toSnakeCase(name)
 		if !ok {
 			columns := make([]string, len(model))
@@ -94,6 +94,10 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
   %s
 )`, tableName, strings.Join(columns, ",\n  ")))
 		} else {
+			table := map[string]*columnSchema{}
+			for _, column := range columns {
+				table[toCamelCase(column.ColumnName)] = column
+			}
 			for _, f := range model {
 				switch column, ok := table[f.Name]; {
 				case !ok:
@@ -182,7 +186,7 @@ func Fprint(output io.Writer, db *sql.DB) error {
 	return nil
 }
 
-func getTableMap(db *sql.DB) (map[string]map[string]*columnSchema, error) {
+func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
 	dbname, err := getCurrentDBName(db)
 	if err != nil {
 		return nil, err
@@ -209,7 +213,7 @@ ORDER BY TABLE_NAME, ORDINAL_POSITION`
 		return nil, err
 	}
 	defer rows.Close()
-	tableMap := map[string]map[string]*columnSchema{}
+	tableMap := map[string][]*columnSchema{}
 	for rows.Next() {
 		schema := &columnSchema{}
 		if err := rows.Scan(
@@ -229,10 +233,7 @@ ORDER BY TABLE_NAME, ORDINAL_POSITION`
 			return nil, err
 		}
 		tableName := toCamelCase(schema.TableName)
-		if tableMap[tableName] == nil {
-			tableMap[tableName] = map[string]*columnSchema{}
-		}
-		tableMap[tableName][toCamelCase(schema.ColumnName)] = schema
+		tableMap[tableName] = append(tableMap[tableName], schema)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -268,9 +269,9 @@ func importAST(pkg string) ast.Decl {
 	}
 }
 
-func structAST(name string, schemaMap map[string]*columnSchema) ast.Decl {
+func structAST(name string, schemas []*columnSchema) ast.Decl {
 	var fields []*ast.Field
-	for _, schema := range schemaMap {
+	for _, schema := range schemas {
 		fields = append(fields, schema.fieldAST())
 	}
 	return &ast.GenDecl{
