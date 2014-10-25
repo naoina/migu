@@ -21,7 +21,6 @@ See files in `_example/simple/`.
 
 ## TODO
 
-* Add tests
 * Command-line interface
 * Struct Tag support for some ORM
 * PostgreSQL and SQLite3 support
