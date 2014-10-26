@@ -12,6 +12,35 @@ import (
 	"strings"
 )
 
+// Sync synchronizes the schema between Go's struct and the database.
+// Go's struct may be provided via the filename of the source file, or via
+// the src parameter.
+//
+// If src != nil, Sync parses the source from src and filename is not used.
+// The type of the argument for the src parameter must be string, []byte, or
+// io.Reader. If src == nil, Sync parses the file specified by filename.
+//
+// All query for synchronization will be performed within the transaction if
+// storage engine supports the transaction. (e.g. MySQL's MyISAM engine does
+// NOT support the transaction)
+func Sync(db *sql.DB, filename string, src interface{}) error {
+	sqls, err := Diff(db, filename, src)
+	if err != nil {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	for _, sql := range sqls {
+		if _, err := tx.Exec(sql); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // Diff returns SQLs for schema synchronous between database and Go's struct.
 func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 	fset := token.NewFileSet()
