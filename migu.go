@@ -10,6 +10,8 @@ import (
 	"io"
 	"sort"
 	"strings"
+
+	"github.com/naoina/migu/dialect"
 )
 
 // Sync synchronizes the schema between Go's struct and the database.
@@ -97,6 +99,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	d := &dialect.MySQL{}
 	var migrations []string
 	for _, name := range names {
 		model := structMap[name]
@@ -105,7 +108,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		if !ok {
 			columns := make([]string, len(model))
 			for i, f := range model {
-				column := []string{toSnakeCase(f.Name), mysqlType(f.Type)}
+				column := []string{toSnakeCase(f.Name), d.ColumnType(f.Type)}
 				if f.Default != "" {
 					column = append(column, "DEFAULT", f.Default)
 				}
@@ -130,9 +133,9 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			for _, f := range model {
 				switch column, ok := table[f.Name]; {
 				case !ok:
-					migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s ADD %s %s`, tableName, toSnakeCase(f.Name), mysqlType(f.Type)))
+					migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s ADD %s %s`, tableName, toSnakeCase(f.Name), d.ColumnType(f.Type)))
 				case f.Type != column.columnType():
-					migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, tableName, toSnakeCase(f.Name), mysqlType(f.Type)))
+					migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, tableName, toSnakeCase(f.Name), d.ColumnType(f.Type)))
 				}
 				delete(table, f.Name)
 			}
@@ -157,33 +160,6 @@ type field struct {
 	PrimaryKey bool
 	Default    string
 	Size       int64
-}
-
-func mysqlType(name string) string {
-	switch name {
-	case "string":
-		return "VARCHAR(255) NOT NULL"
-	case "int":
-		return "INT NOT NULL"
-	case "int64":
-		return "BIGINT NOT NULL"
-	case "uint":
-		return "INT UNSIGNED NOT NULL"
-	case "bool":
-		return "BOOLEAN NOT NULL"
-	case "float32", "float64":
-		return "DOUBLE NOT NULL"
-	case "sql.NullString", "*string":
-		return "VARCHAR(255)"
-	case "sql.NullBool", "*bool":
-		return "BOOLEAN"
-	case "sql.NullInt64", "*int64":
-		return "BIGINT"
-	case "sql.NullFloat64", "*float64":
-		return "DOUBLE"
-	default:
-		return "VARCHAR(255)"
-	}
 }
 
 // Fprint generates Go's structs from database schema and writes to output.
