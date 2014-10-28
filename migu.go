@@ -108,7 +108,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		if !ok {
 			columns := make([]string, len(model))
 			for i, f := range model {
-				column := []string{toSnakeCase(f.Name), d.ColumnType(f.Type)}
+				column := []string{d.Quote(toSnakeCase(f.Name)), d.ColumnType(f.Type)}
 				if f.Default != "" {
 					column = append(column, "DEFAULT", f.Default)
 				}
@@ -124,7 +124,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			}
 			migrations = append(migrations, fmt.Sprintf(`CREATE TABLE %s (
   %s
-)`, tableName, strings.Join(columns, ",\n  ")))
+)`, d.Quote(tableName), strings.Join(columns, ",\n  ")))
 		} else {
 			table := map[string]*columnSchema{}
 			for _, column := range columns {
@@ -133,21 +133,21 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			for _, f := range model {
 				switch column, ok := table[f.Name]; {
 				case !ok:
-					migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s ADD %s %s`, tableName, toSnakeCase(f.Name), d.ColumnType(f.Type)))
+					migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s ADD %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), d.ColumnType(f.Type)))
 				case f.Type != column.columnType():
-					migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, tableName, toSnakeCase(f.Name), d.ColumnType(f.Type)))
+					migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), d.ColumnType(f.Type)))
 				}
 				delete(table, f.Name)
 			}
 			for _, f := range table {
-				migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s DROP %s`, tableName, toSnakeCase(f.ColumnName)))
+				migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s DROP %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.ColumnName))))
 			}
 		}
 		delete(structMap, name)
 		delete(tableMap, name)
 	}
 	for name := range tableMap {
-		migrations = append(migrations, fmt.Sprintf(`DROP TABLE %s`, toSnakeCase(name)))
+		migrations = append(migrations, fmt.Sprintf(`DROP TABLE %s`, d.Quote(toSnakeCase(name))))
 	}
 	return migrations, nil
 }

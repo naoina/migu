@@ -32,10 +32,10 @@ type User struct {
 		t.Fatal(err)
 	}
 	actual := results
-	expect := []string{`CREATE TABLE user (
-  name VARCHAR(255) NOT NULL,
-  age INT NOT NULL
-)`}
+	expect := []string{"CREATE TABLE `user` (\n" +
+		"  `name` VARCHAR(255) NOT NULL,\n" +
+		"  `age` INT NOT NULL\n" +
+		")"}
 	if !reflect.DeepEqual(actual, expect) {
 		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
 	}
@@ -64,7 +64,7 @@ type User struct {
 		t.Fatal(err)
 	}
 	actual = results
-	expect = []string{`ALTER TABLE user MODIFY age INT UNSIGNED NOT NULL`}
+	expect = []string{"ALTER TABLE `user` MODIFY `age` INT UNSIGNED NOT NULL"}
 	sort.Strings(actual)
 	sort.Strings(expect)
 	if !reflect.DeepEqual(actual, expect) {
@@ -83,7 +83,7 @@ type User struct {
 		t.Fatal(err)
 	}
 	actual = results
-	expect = []string{`ALTER TABLE user DROP name`}
+	expect = []string{"ALTER TABLE `user` DROP `name`"}
 	sort.Strings(actual)
 	sort.Strings(expect)
 	if !reflect.DeepEqual(actual, expect) {
@@ -99,7 +99,7 @@ type User struct {
 		t.Fatal(err)
 	}
 	actual = results
-	expect = []string{`DROP TABLE user`}
+	expect = []string{"DROP TABLE `user`"}
 	sort.Strings(actual)
 	sort.Strings(expect)
 	if !reflect.DeepEqual(actual, expect) {

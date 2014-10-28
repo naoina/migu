@@ -1,5 +1,10 @@
 package dialect
 
+import (
+	"fmt"
+	"strings"
+)
+
 type MySQL struct {
 }
 
@@ -28,4 +33,8 @@ func (d *MySQL) ColumnType(name string) string {
 	default:
 		return "VARCHAR(255)"
 	}
+}
+
+func (d *MySQL) Quote(s string) string {
+	return fmt.Sprintf("`%s`", strings.Replace(s, "`", "``", -1))
 }
