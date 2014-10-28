@@ -26,7 +26,7 @@ type User struct {
 Then type the following commands to execute the first migration:
 
 ```
-% mysqladmin create migu_test
+% mysqladmin -u root create migu_test
 % migu -u root sync migu_test schema.go
 % mysql -u root migu_test -e 'desc user'
 +-------+--------------+------+-----+---------+-------+
