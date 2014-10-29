@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/howeyc/gopass"
@@ -88,7 +90,26 @@ func sync(db *sql.DB) error {
 		option.file = ""
 		src = os.Stdin
 	}
-	return migu.Sync(db, option.file, src)
+	sqls, err := migu.Diff(db, option.file, src)
+	if err != nil {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	for _, sql := range sqls {
+		fmt.Printf("--------applying--------\n")
+		fmt.Printf("  %s\n", strings.Replace(sql, "\n", "\n  ", -1))
+		start := time.Now()
+		if _, err := tx.Exec(sql); err != nil {
+			tx.Rollback()
+			return err
+		}
+		d := time.Since(start)
+		fmt.Printf("--------done %.3fs--------\n", d.Seconds()/time.Second.Seconds())
+	}
+	return tx.Commit()
 }
 
 func database() (db *sql.DB, err error) {
