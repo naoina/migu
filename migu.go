@@ -10,6 +10,7 @@ import (
 	"io"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/naoina/migu/dialect"
@@ -82,7 +83,11 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 				Type: typeName,
 			}
 			if fld.Tag != nil {
-				tag := reflect.StructTag(fld.Tag.Value)
+				s, err := strconv.Unquote(fld.Tag.Value)
+				if err != nil {
+					return nil, err
+				}
+				tag := reflect.StructTag(s)
 				if def := tag.Get("default"); def != "" {
 					f.Default = formatDefault(f.Type, def)
 				}
