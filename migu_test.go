@@ -119,7 +119,7 @@ func TestFprint(t *testing.T) {
 CREATE TABLE user (
   name VARCHAR(255)
 )`}, `type User struct {
-	Name string
+	Name *string
 }
 
 `},
@@ -128,8 +128,8 @@ CREATE TABLE user (
   name VARCHAR(255),
   age  INT
 )`}, `type User struct {
-	Name string
-	Age  int
+	Name *string
+	Age  *int
 }
 
 `},
@@ -142,12 +142,12 @@ CREATE TABLE post (
   title   VARCHAR(255),
   content VARCHAR(65533)
 )`}, `type Post struct {
-	Title   string
+	Title   *string
 	Content string
 }
 
 type User struct {
-	Name string
+	Name *string
 }
 
 `},

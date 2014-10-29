@@ -150,7 +150,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 						m += " NOT NULL"
 					}
 					migrations = append(migrations, m)
-				case f.Type != column.columnType():
+				case !inStrings(column.GoFieldTypes(), f.Type):
 					colType, null := d.ColumnType(f.Type)
 					m := fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
 					if !null {
@@ -345,7 +345,7 @@ func (schema *columnSchema) fieldAST() *ast.Field {
 		Names: []*ast.Ident{
 			ast.NewIdent(toCamelCase(schema.ColumnName)),
 		},
-		Type: ast.NewIdent(schema.columnType()),
+		Type: ast.NewIdent(schema.GoFieldTypes()[0]),
 		// Tag: &ast.BasicLit{
 		// Kind:  token.STRING,
 		// Value: "",
@@ -354,29 +354,49 @@ func (schema *columnSchema) fieldAST() *ast.Field {
 	return field
 }
 
-func (schema *columnSchema) columnType() string {
+func (schema *columnSchema) GoFieldTypes() []string {
 	switch schema.DataType {
 	case "tinyint", "smallint", "mediumint", "int":
 		if schema.isUnsigned() {
-			return "uint"
-		} else {
-			return "int"
+			if schema.isNullable() {
+				return []string{"*uint", "sql.NullInt64"}
+			}
+			return []string{"uint"}
 		}
+		if schema.isNullable() {
+			return []string{"*int", "sql.NullInt64"}
+		}
+		return []string{"int"}
 	case "bigint":
 		if schema.isUnsigned() {
-			return "uint64"
-		} else {
-			return "int64"
+			if schema.isNullable() {
+				return []string{"*uint64", "sql.NullInt64"}
+			}
+			return []string{"uint64"}
 		}
+		if schema.isNullable() {
+			return []string{"*int64", "sql.NullInt64"}
+		}
+		return []string{"int64"}
 	case "varchar", "text":
-		return "string"
+		if schema.isNullable() {
+			return []string{"*string", "sql.NullString"}
+		}
+		return []string{"string"}
 	case "datetime":
-		return "time.Time"
+		if schema.isNullable() {
+			return []string{"*time.Time"}
+		}
+		return []string{"time.Time"}
 	default:
-		return "string"
+		return []string{"string"}
 	}
 }
 
 func (schema *columnSchema) isUnsigned() bool {
 	return strings.Contains(schema.ColumnType, "unsigned")
+}
+
+func (schema *columnSchema) isNullable() bool {
+	return strings.ToUpper(schema.IsNullable) == "YES"
 }

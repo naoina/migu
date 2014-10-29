@@ -46,3 +46,12 @@ func toSnakeCase(s string) string {
 	}
 	return result.String()
 }
+
+func inStrings(a []string, s string) bool {
+	for _, v := range a {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
