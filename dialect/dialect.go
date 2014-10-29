@@ -1,6 +1,6 @@
 package dialect
 
 type Dialect interface {
-	ColumnType(name string) string
+	ColumnType(name string) (typ string, null bool)
 	Quote(s string) string
 }

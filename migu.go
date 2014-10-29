@@ -108,7 +108,11 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		if !ok {
 			columns := make([]string, len(model))
 			for i, f := range model {
-				column := []string{d.Quote(toSnakeCase(f.Name)), d.ColumnType(f.Type)}
+				colType, null := d.ColumnType(f.Type)
+				column := []string{d.Quote(toSnakeCase(f.Name)), colType}
+				if !null {
+					column = append(column, "NOT NULL")
+				}
 				if f.Default != "" {
 					column = append(column, "DEFAULT", f.Default)
 				}
@@ -133,9 +137,19 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			for _, f := range model {
 				switch column, ok := table[f.Name]; {
 				case !ok:
-					migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s ADD %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), d.ColumnType(f.Type)))
+					colType, null := d.ColumnType(f.Type)
+					m := fmt.Sprintf(`ALTER TABLE %s ADD %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
+					if !null {
+						m += " NOT NULL"
+					}
+					migrations = append(migrations, m)
 				case f.Type != column.columnType():
-					migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), d.ColumnType(f.Type)))
+					colType, null := d.ColumnType(f.Type)
+					m := fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
+					if !null {
+						m += " NOT NULL"
+					}
+					migrations = append(migrations, m)
 				}
 				delete(table, f.Name)
 			}

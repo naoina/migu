@@ -8,30 +8,30 @@ import (
 type MySQL struct {
 }
 
-func (d *MySQL) ColumnType(name string) string {
+func (d *MySQL) ColumnType(name string) (typ string, null bool) {
 	switch name {
 	case "string":
-		return "VARCHAR(255) NOT NULL"
+		return "VARCHAR(255)", false
 	case "int":
-		return "INT NOT NULL"
+		return "INT", false
 	case "int64":
-		return "BIGINT NOT NULL"
+		return "BIGINT", false
 	case "uint":
-		return "INT UNSIGNED NOT NULL"
+		return "INT UNSIGNED", false
 	case "bool":
-		return "BOOLEAN NOT NULL"
+		return "BOOLEAN", false
 	case "float32", "float64":
-		return "DOUBLE NOT NULL"
+		return "DOUBLE", false
 	case "sql.NullString", "*string":
-		return "VARCHAR(255)"
+		return "VARCHAR(255)", true
 	case "sql.NullBool", "*bool":
-		return "BOOLEAN"
+		return "BOOLEAN", true
 	case "sql.NullInt64", "*int64":
-		return "BIGINT"
+		return "BIGINT", true
 	case "sql.NullFloat64", "*float64":
-		return "DOUBLE"
+		return "DOUBLE", true
 	default:
-		return "VARCHAR(255)"
+		return "VARCHAR(255)", true
 	}
 }
 
