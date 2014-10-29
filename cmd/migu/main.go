@@ -22,12 +22,14 @@ var (
 		User     string `short:"u" long:"user"`
 		Host     string `short:"h" long:"host"`
 		Password string `short:"p" long:"password" optional:"true" optional-value:"\x00"`
+		Quiet    bool   `short:"q" long:"quiet"`
 		Help     bool   `long:"help"`
 
 		cmd    string
 		file   string
 		dbname string
 	}
+	printf = fmt.Printf
 )
 
 type usageError struct {
@@ -45,6 +47,7 @@ Options:
   -h, --host=HOST        Connect to host of database
   -p, --password[=PASS]  Password to use when connecting to server.
                          If password is not given, it's asked from the tty
+  -q, --quiet            Suppress non-error messages
       --help             Display this help and exit
 
 With no FILE, or when FILE is -, read standard input.
@@ -99,15 +102,15 @@ func sync(db *sql.DB) error {
 		return err
 	}
 	for _, sql := range sqls {
-		fmt.Printf("--------applying--------\n")
-		fmt.Printf("  %s\n", strings.Replace(sql, "\n", "\n  ", -1))
+		printf("--------applying--------\n")
+		printf("  %s\n", strings.Replace(sql, "\n", "\n  ", -1))
 		start := time.Now()
 		if _, err := tx.Exec(sql); err != nil {
 			tx.Rollback()
 			return err
 		}
 		d := time.Since(start)
-		fmt.Printf("--------done %.3fs--------\n", d.Seconds()/time.Second.Seconds())
+		printf("--------done %.3fs--------\n", d.Seconds()/time.Second.Seconds())
 	}
 	return tx.Commit()
 }
@@ -153,6 +156,9 @@ func main() {
 	}
 	if option.Help {
 		usage(0)
+	}
+	if option.Quiet {
+		printf = func(string, ...interface{}) (int, error) { return 0, nil }
 	}
 	if err := run(args); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
