@@ -363,16 +363,19 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ast.Field{
+	field := &ast.Field{
 		Names: []*ast.Ident{
 			ast.NewIdent(toCamelCase(schema.ColumnName)),
 		},
 		Type: ast.NewIdent(types[0]),
-		// Tag: &ast.BasicLit{
-		// Kind:  token.STRING,
-		// Value: "",
-		// },
-	}, nil
+	}
+	if schema.ColumnDefault.Valid {
+		field.Tag = &ast.BasicLit{
+			Kind:  token.STRING,
+			Value: fmt.Sprintf(`"default:\"%s\""`, schema.ColumnDefault.String),
+		}
+	}
+	return field, nil
 }
 
 func (schema *columnSchema) GoFieldTypes() ([]string, error) {
