@@ -47,56 +47,23 @@ func Sync(db *sql.DB, filename string, src interface{}) error {
 
 // Diff returns SQLs for schema synchronous between database and Go's struct.
 func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
+	structASTMap, err := makeStructASTMap(filename, src)
 	if err != nil {
 		return nil, err
 	}
-	ast.FileExports(f)
-	structASTMap := map[string]*ast.StructType{}
-	ast.Inspect(f, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.TypeSpec:
-			if t, ok := x.Type.(*ast.StructType); ok {
-				structASTMap[x.Name.Name] = t
-			}
-			return false
-		default:
-			return true
-		}
-	})
 	structMap := map[string][]*field{}
 	for name, structAST := range structASTMap {
 		for _, fld := range structAST.Fields.List {
-			var typeName string
-			switch t := fld.Type.(type) {
-			case *ast.Ident:
-				typeName = t.Name
-			case *ast.SelectorExpr:
-				typeName = t.X.(*ast.Ident).Name + "." + t.Sel.Name
-			case *ast.StarExpr:
-				typeName = "*" + t.X.(*ast.Ident).Name
-			default:
-				return nil, fmt.Errorf("migu: BUG: unknown type %T", t)
+			typeName, err := detectTypeName(fld)
+			if err != nil {
+				return nil, err
 			}
-			f := field{
-				Type: typeName,
-			}
-			if fld.Tag != nil {
-				s, err := strconv.Unquote(fld.Tag.Value)
-				if err != nil {
-					return nil, err
-				}
-				tag := reflect.StructTag(s)
-				if def := tag.Get("default"); def != "" {
-					f.Default = formatDefault(f.Type, def)
-				}
-			}
-			if fld.Comment != nil {
-				f.Comment = strings.TrimSpace(fld.Comment.Text())
+			f, err := newField(typeName, fld)
+			if err != nil {
+				return nil, err
 			}
 			for _, ident := range fld.Names {
-				field := f
+				field := *f
 				field.Name = ident.Name
 				structMap[name] = append(structMap[name], &field)
 			}
@@ -120,23 +87,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		if !ok {
 			columns := make([]string, len(model))
 			for i, f := range model {
-				colType, null := d.ColumnType(f.Type)
-				column := []string{d.Quote(toSnakeCase(f.Name)), colType}
-				if !null {
-					column = append(column, "NOT NULL")
-				}
-				if f.Default != "" {
-					column = append(column, "DEFAULT", f.Default)
-				}
-				if f.PrimaryKey {
-					column = append(column, "NOT NULL", "AUTO_INCREMENT", "PRIMARY KEY")
-				} else if f.Unique {
-					column = append(column, "UNIQUE")
-				}
-				if f.Comment != "" {
-					column = append(column, "COMMENT", fmt.Sprintf("'%s'", f.Comment))
-				}
-				columns[i] = strings.Join(column, " ")
+				columns[i] = columnSQL(d, f)
 			}
 			migrations = append(migrations, fmt.Sprintf(`CREATE TABLE %s (
   %s
@@ -147,26 +98,12 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 				table[toCamelCase(column.ColumnName)] = column
 			}
 			for _, f := range model {
-				if column, ok := table[f.Name]; ok {
-					types, err := column.GoFieldTypes()
-					if err != nil {
-						return nil, err
-					}
-					if !inStrings(types, f.Type) {
-						colType, null := d.ColumnType(f.Type)
-						m := fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
-						if !null {
-							m += " NOT NULL"
-						}
-						migrations = append(migrations, m)
-					}
-				} else {
-					colType, null := d.ColumnType(f.Type)
-					m := fmt.Sprintf(`ALTER TABLE %s ADD %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
-					if !null {
-						m += " NOT NULL"
-					}
-					migrations = append(migrations, m)
+				s, err := alterTableSQL(d, tableName, table, f)
+				if err != nil {
+					return nil, err
+				}
+				if s != "" {
+					migrations = append(migrations, s)
 				}
 				delete(table, f.Name)
 			}
@@ -191,6 +128,26 @@ type field struct {
 	PrimaryKey bool
 	Default    string
 	Size       int64
+}
+
+func newField(name string, f *ast.Field) (*field, error) {
+	ret := &field{
+		Type: name,
+	}
+	if f.Tag != nil {
+		s, err := strconv.Unquote(f.Tag.Value)
+		if err != nil {
+			return nil, err
+		}
+		tag := reflect.StructTag(s)
+		if def := tag.Get("default"); def != "" {
+			ret.Default = formatDefault(ret.Type, def)
+		}
+	}
+	if f.Comment != nil {
+		ret.Comment = strings.TrimSpace(f.Comment.Text())
+	}
+	return ret, nil
 }
 
 // Fprint generates Go's structs from database schema and writes to output.
@@ -302,6 +259,86 @@ func fprintln(output io.Writer, decl ast.Decl) error {
 	}
 	fmt.Fprintf(output, "\n\n")
 	return nil
+}
+
+func makeStructASTMap(filename string, src interface{}) (map[string]*ast.StructType, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
+	if err != nil {
+		return nil, err
+	}
+	ast.FileExports(f)
+	structASTMap := map[string]*ast.StructType{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.TypeSpec:
+			if t, ok := x.Type.(*ast.StructType); ok {
+				structASTMap[x.Name.Name] = t
+			}
+			return false
+		default:
+			return true
+		}
+	})
+	return structASTMap, nil
+}
+
+func detectTypeName(f *ast.Field) (string, error) {
+	switch t := f.Type.(type) {
+	case *ast.Ident:
+		return t.Name, nil
+	case *ast.SelectorExpr:
+		return t.X.(*ast.Ident).Name + "." + t.Sel.Name, nil
+	case *ast.StarExpr:
+		return "*" + t.X.(*ast.Ident).Name, nil
+	default:
+		return "", fmt.Errorf("migu: BUG: unknown type %T", t)
+	}
+}
+
+func columnSQL(d dialect.Dialect, f *field) string {
+	colType, null := d.ColumnType(f.Type)
+	column := []string{d.Quote(toSnakeCase(f.Name)), colType}
+	if !null {
+		column = append(column, "NOT NULL")
+	}
+	if f.Default != "" {
+		column = append(column, "DEFAULT", f.Default)
+	}
+	if f.PrimaryKey {
+		column = append(column, "NOT NULL", "AUTO_INCREMENT", "PRIMARY KEY")
+	} else if f.Unique {
+		column = append(column, "UNIQUE")
+	}
+	if f.Comment != "" {
+		column = append(column, "COMMENT", fmt.Sprintf("'%s'", f.Comment))
+	}
+	return strings.Join(column, " ")
+}
+
+func alterTableSQL(d dialect.Dialect, tableName string, table map[string]*columnSchema, f *field) (string, error) {
+	column, exists := table[f.Name]
+	if !exists {
+		colType, null := d.ColumnType(f.Type)
+		s := fmt.Sprintf(`ALTER TABLE %s ADD %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
+		if !null {
+			s += " NOT NULL"
+		}
+		return s, nil
+	}
+	types, err := column.GoFieldTypes()
+	if err != nil {
+		return "", err
+	}
+	if !inStrings(types, f.Type) {
+		colType, null := d.ColumnType(f.Type)
+		s := fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
+		if !null {
+			s += " NOT NULL"
+		}
+		return s, nil
+	}
+	return "", nil
 }
 
 func importAST(pkg string) ast.Decl {
