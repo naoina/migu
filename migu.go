@@ -142,17 +142,22 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 				table[toCamelCase(column.ColumnName)] = column
 			}
 			for _, f := range model {
-				switch column, ok := table[f.Name]; {
-				case !ok:
+				if column, ok := table[f.Name]; ok {
+					types, err := column.GoFieldTypes()
+					if err != nil {
+						return nil, err
+					}
+					if !inStrings(types, f.Type) {
+						colType, null := d.ColumnType(f.Type)
+						m := fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
+						if !null {
+							m += " NOT NULL"
+						}
+						migrations = append(migrations, m)
+					}
+				} else {
 					colType, null := d.ColumnType(f.Type)
 					m := fmt.Sprintf(`ALTER TABLE %s ADD %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
-					if !null {
-						m += " NOT NULL"
-					}
-					migrations = append(migrations, m)
-				case !inStrings(column.GoFieldTypes(), f.Type):
-					colType, null := d.ColumnType(f.Type)
-					m := fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
 					if !null {
 						m += " NOT NULL"
 					}
@@ -205,7 +210,11 @@ func Fprint(output io.Writer, db *sql.DB) error {
 		}
 	}
 	for _, name := range names {
-		if err := fprintln(output, structAST(name, tableMap[name])); err != nil {
+		s, err := structAST(name, tableMap[name])
+		if err != nil {
+			return err
+		}
+		if err := fprintln(output, s); err != nil {
 			return err
 		}
 	}
@@ -304,10 +313,14 @@ func importAST(pkg string) ast.Decl {
 	}
 }
 
-func structAST(name string, schemas []*columnSchema) ast.Decl {
+func structAST(name string, schemas []*columnSchema) (ast.Decl, error) {
 	var fields []*ast.Field
 	for _, schema := range schemas {
-		fields = append(fields, schema.fieldAST())
+		f, err := schema.fieldAST()
+		if err != nil {
+			return nil, err
+		}
+		fields = append(fields, f)
 	}
 	return &ast.GenDecl{
 		Tok: token.TYPE,
@@ -321,7 +334,7 @@ func structAST(name string, schemas []*columnSchema) ast.Decl {
 				},
 			},
 		},
-	}
+	}, nil
 }
 
 type columnSchema struct {
@@ -340,56 +353,59 @@ type columnSchema struct {
 	ColumnComment          string
 }
 
-func (schema *columnSchema) fieldAST() *ast.Field {
-	field := &ast.Field{
+func (schema *columnSchema) fieldAST() (*ast.Field, error) {
+	types, err := schema.GoFieldTypes()
+	if err != nil {
+		return nil, err
+	}
+	return &ast.Field{
 		Names: []*ast.Ident{
 			ast.NewIdent(toCamelCase(schema.ColumnName)),
 		},
-		Type: ast.NewIdent(schema.GoFieldTypes()[0]),
+		Type: ast.NewIdent(types[0]),
 		// Tag: &ast.BasicLit{
 		// Kind:  token.STRING,
 		// Value: "",
 		// },
-	}
-	return field
+	}, nil
 }
 
-func (schema *columnSchema) GoFieldTypes() []string {
+func (schema *columnSchema) GoFieldTypes() ([]string, error) {
 	switch schema.DataType {
 	case "tinyint", "smallint", "mediumint", "int":
 		if schema.isUnsigned() {
 			if schema.isNullable() {
-				return []string{"*uint", "sql.NullInt64"}
+				return []string{"*uint", "sql.NullInt64"}, nil
 			}
-			return []string{"uint"}
+			return []string{"uint"}, nil
 		}
 		if schema.isNullable() {
-			return []string{"*int", "sql.NullInt64"}
+			return []string{"*int", "sql.NullInt64"}, nil
 		}
-		return []string{"int"}
+		return []string{"int"}, nil
 	case "bigint":
 		if schema.isUnsigned() {
 			if schema.isNullable() {
-				return []string{"*uint64", "sql.NullInt64"}
+				return []string{"*uint64", "sql.NullInt64"}, nil
 			}
-			return []string{"uint64"}
+			return []string{"uint64"}, nil
 		}
 		if schema.isNullable() {
-			return []string{"*int64", "sql.NullInt64"}
+			return []string{"*int64", "sql.NullInt64"}, nil
 		}
-		return []string{"int64"}
+		return []string{"int64"}, nil
 	case "varchar", "text":
 		if schema.isNullable() {
-			return []string{"*string", "sql.NullString"}
+			return []string{"*string", "sql.NullString"}, nil
 		}
-		return []string{"string"}
+		return []string{"string"}, nil
 	case "datetime":
 		if schema.isNullable() {
-			return []string{"*time.Time"}
+			return []string{"*time.Time"}, nil
 		}
-		return []string{"time.Time"}
+		return []string{"time.Time"}, nil
 	default:
-		return []string{"string"}
+		return nil, fmt.Errorf("BUG: unexpected data type: %s", schema.DataType)
 	}
 }
 
