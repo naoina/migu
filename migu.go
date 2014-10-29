@@ -394,7 +394,7 @@ func (schema *columnSchema) GoFieldTypes() ([]string, error) {
 			return []string{"*int64", "sql.NullInt64"}, nil
 		}
 		return []string{"int64"}, nil
-	case "varchar", "text":
+	case "varchar", "text", "mediumtext", "longtext":
 		if schema.isNullable() {
 			return []string{"*string", "sql.NullString"}, nil
 		}

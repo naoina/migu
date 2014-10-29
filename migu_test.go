@@ -143,7 +143,7 @@ CREATE TABLE post (
   content VARCHAR(65533)
 )`}, `type Post struct {
 	Title   *string
-	Content string
+	Content *string
 }
 
 type User struct {
