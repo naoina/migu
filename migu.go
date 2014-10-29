@@ -156,21 +156,16 @@ func Fprint(output io.Writer, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	if hasDatetimeColumn(tableMap) {
+		if err := fprintln(output, importAST("time")); err != nil {
+			return err
+		}
+	}
 	names := make([]string, 0, len(tableMap))
 	for name := range tableMap {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	for _, name := range names {
-		for _, schema := range tableMap[name] {
-			if schema.DataType == "datetime" {
-				if err := fprintln(output, importAST("time")); err != nil {
-					return err
-				}
-				break
-			}
-		}
-	}
 	for _, name := range names {
 		s, err := structAST(name, tableMap[name])
 		if err != nil {
@@ -339,6 +334,17 @@ func alterTableSQL(d dialect.Dialect, tableName string, table map[string]*column
 		return s, nil
 	}
 	return "", nil
+}
+
+func hasDatetimeColumn(t map[string][]*columnSchema) bool {
+	for _, schemas := range t {
+		for _, schema := range schemas {
+			if schema.DataType == "datetime" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func importAST(pkg string) ast.Decl {
