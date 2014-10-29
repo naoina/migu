@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"database/sql"
 	"fmt"
 	"io"
@@ -132,26 +131,22 @@ func database() (db *sql.DB, err error) {
 			}
 		}
 	}
-	dsn := bytes.NewBufferString(option.User)
+	dsn := []byte(option.User)
 	if option.Password != "" {
 		if option.Password == "\x00" {
 			fmt.Printf("Enter password: ")
 			option.Password = string(gopass.GetPasswd())
 		}
-		dsn.WriteByte(':')
-		dsn.WriteString(option.Password)
+		dsn = append(append(dsn, ':'), option.Password...)
 	}
-	if dsn.Len() > 0 {
-		dsn.WriteByte('@')
+	if len(dsn) > 0 {
+		dsn = append(dsn, '@')
 	}
 	if option.Host != "" {
-		dsn.WriteString("tcp(")
-		dsn.WriteString(option.Host)
-		dsn.WriteByte(')')
+		dsn = append(append(append(dsn, "tcp("...), option.Host...), ')')
 	}
-	dsn.WriteByte('/')
-	dsn.WriteString(option.dbname)
-	return sql.Open("mysql", dsn.String())
+	dsn = append(append(dsn, '/'), option.dbname...)
+	return sql.Open("mysql", string(dsn))
 }
 
 func main() {
