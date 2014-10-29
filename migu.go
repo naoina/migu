@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -79,6 +80,12 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			}
 			f := field{
 				Type: typeName,
+			}
+			if fld.Tag != nil {
+				tag := reflect.StructTag(fld.Tag.Value)
+				if def := tag.Get("default"); def != "" {
+					f.Default = formatDefault(f.Type, def)
+				}
 			}
 			if fld.Comment != nil {
 				f.Comment = strings.TrimSpace(fld.Comment.Text())
@@ -264,6 +271,15 @@ func getCurrentDBName(db *sql.DB) (string, error) {
 	var dbname sql.NullString
 	err := db.QueryRow(`SELECT DATABASE()`).Scan(&dbname)
 	return dbname.String, err
+}
+
+func formatDefault(t, def string) string {
+	switch t {
+	case "string":
+		return `'` + def + `'`
+	default:
+		return def
+	}
 }
 
 func fprintln(output io.Writer, decl ast.Decl) error {
