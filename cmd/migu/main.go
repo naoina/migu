@@ -22,6 +22,7 @@ var (
 		User     string `short:"u" long:"user"`
 		Host     string `short:"h" long:"host"`
 		Password string `short:"p" long:"password" optional:"true" optional-value:"\x00"`
+		DryRun   bool   `long:"dry-run"`
 		Quiet    bool   `short:"q" long:"quiet"`
 		Help     bool   `long:"help"`
 
@@ -29,7 +30,8 @@ var (
 		file   string
 		dbname string
 	}
-	printf = fmt.Printf
+	dryRunMarker = "dry-run "
+	printf       = fmt.Printf
 )
 
 type usageError struct {
@@ -47,6 +49,7 @@ Options:
   -h, --host=HOST        Connect to host of database
   -p, --password[=PASS]  Password to use when connecting to server.
                          If password is not given, it's asked from the tty
+      --dry-run          Print the results with no changes
   -q, --quiet            Suppress non-error messages
       --help             Display this help and exit
 
@@ -102,17 +105,23 @@ func sync(db *sql.DB) error {
 		return err
 	}
 	for _, sql := range sqls {
-		printf("--------applying--------\n")
+		printf("--------%sapplying--------\n", dryRunMarker)
 		printf("  %s\n", strings.Replace(sql, "\n", "\n  ", -1))
 		start := time.Now()
-		if _, err := tx.Exec(sql); err != nil {
-			tx.Rollback()
-			return err
+		if !option.DryRun {
+			if _, err := tx.Exec(sql); err != nil {
+				tx.Rollback()
+				return err
+			}
 		}
 		d := time.Since(start)
-		printf("--------done %.3fs--------\n", d.Seconds()/time.Second.Seconds())
+		printf("--------%sdone %.3fs--------\n", dryRunMarker, d.Seconds()/time.Second.Seconds())
 	}
-	return tx.Commit()
+	if option.DryRun {
+		return nil
+	} else {
+		return tx.Commit()
+	}
 }
 
 func database() (db *sql.DB, err error) {
@@ -156,6 +165,9 @@ func main() {
 	}
 	if option.Help {
 		usage(0)
+	}
+	if !option.DryRun {
+		dryRunMarker = ""
 	}
 	if option.Quiet {
 		printf = func(string, ...interface{}) (int, error) { return 0, nil }
