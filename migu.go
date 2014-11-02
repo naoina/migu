@@ -178,8 +178,9 @@ func Fprint(output io.Writer, db *sql.DB) error {
 }
 
 const (
-	tagDefault = "default"
-	tagUnique  = "unique"
+	tagDefault    = "default"
+	tagPrimaryKey = "pk"
+	tagUnique     = "unique"
 )
 
 func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
@@ -296,7 +297,7 @@ func detectTypeName(f *ast.Field) (string, error) {
 }
 
 func columnSQL(d dialect.Dialect, f *field) string {
-	colType, null := d.ColumnType(f.Type)
+	colType, null, autoIncrementable := d.ColumnType(f.Type)
 	column := []string{d.Quote(toSnakeCase(f.Name)), colType}
 	if !null {
 		column = append(column, "NOT NULL")
@@ -305,7 +306,10 @@ func columnSQL(d dialect.Dialect, f *field) string {
 		column = append(column, "DEFAULT", f.Default)
 	}
 	if f.PrimaryKey {
-		column = append(column, "NOT NULL", "AUTO_INCREMENT", "PRIMARY KEY")
+		if autoIncrementable {
+			column = append(column, "AUTO_INCREMENT")
+		}
+		column = append(column, "PRIMARY KEY")
 	} else if f.Unique {
 		column = append(column, "UNIQUE")
 	}
@@ -318,7 +322,7 @@ func columnSQL(d dialect.Dialect, f *field) string {
 func alterTableSQL(d dialect.Dialect, tableName string, table map[string]*columnSchema, f *field) (string, error) {
 	column, exists := table[f.Name]
 	if !exists {
-		colType, null := d.ColumnType(f.Type)
+		colType, null, _ := d.ColumnType(f.Type)
 		s := fmt.Sprintf(`ALTER TABLE %s ADD %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
 		if !null {
 			s += " NOT NULL"
@@ -330,7 +334,7 @@ func alterTableSQL(d dialect.Dialect, tableName string, table map[string]*column
 		return "", err
 	}
 	if !inStrings(types, f.Type) {
-		colType, null := d.ColumnType(f.Type)
+		colType, null, _ := d.ColumnType(f.Type)
 		s := fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
 		if !null {
 			s += " NOT NULL"
@@ -403,6 +407,8 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 				val = optval[1]
 			}
 			f.Default = formatDefault(f.Type, val)
+		case tagPrimaryKey:
+			f.PrimaryKey = true
 		case tagUnique:
 			f.Unique = true
 		default:
@@ -443,7 +449,10 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	if schema.ColumnDefault.Valid {
 		tags = append(tags, tagDefault+":"+schema.ColumnDefault.String)
 	}
-	if schema.ColumnKey == "UNI" {
+	switch schema.ColumnKey {
+	case "PRI":
+		tags = append(tags, tagPrimaryKey)
+	case "UNI":
 		tags = append(tags, tagUnique)
 	}
 	if len(tags) > 0 {
