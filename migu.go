@@ -139,9 +139,8 @@ func newField(name string, f *ast.Field) (*field, error) {
 		if err != nil {
 			return nil, err
 		}
-		tag := reflect.StructTag(s)
-		if def := tag.Get("default"); def != "" {
-			ret.Default = formatDefault(ret.Type, def)
+		if err := parseStructTag(ret, reflect.StructTag(s)); err != nil {
+			return nil, err
 		}
 	}
 	if f.Comment != nil {
@@ -385,6 +384,27 @@ func structAST(name string, schemas []*columnSchema) (ast.Decl, error) {
 	}, nil
 }
 
+func parseStructTag(f *field, tag reflect.StructTag) error {
+	migu := tag.Get("migu")
+	if migu == "" {
+		return nil
+	}
+	for _, opt := range strings.Split(migu, ",") {
+		optval := strings.SplitN(opt, ":", 2)
+		switch optval[0] {
+		case "default":
+			var val string
+			if len(optval) > 1 {
+				val = optval[1]
+			}
+			f.Default = formatDefault(f.Type, val)
+		default:
+			return fmt.Errorf("unknown option: `%s'", opt)
+		}
+	}
+	return nil
+}
+
 type columnSchema struct {
 	TableName              string
 	ColumnName             string
@@ -412,10 +432,14 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 		},
 		Type: ast.NewIdent(types[0]),
 	}
+	var tags []string
 	if schema.ColumnDefault.Valid {
+		tags = append(tags, "default:"+schema.ColumnDefault.String)
+	}
+	if len(tags) > 0 {
 		field.Tag = &ast.BasicLit{
 			Kind:  token.STRING,
-			Value: fmt.Sprintf(`"default:\"%s\""`, schema.ColumnDefault.String),
+			Value: fmt.Sprintf("`migu:\"%s\"`", strings.Join(tags, ",")),
 		}
 	}
 	return field, nil
