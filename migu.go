@@ -177,6 +177,10 @@ func Fprint(output io.Writer, db *sql.DB) error {
 	return nil
 }
 
+const (
+	tagDefault = "default"
+)
+
 func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
 	dbname, err := getCurrentDBName(db)
 	if err != nil {
@@ -392,7 +396,7 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 	for _, opt := range strings.Split(migu, ",") {
 		optval := strings.SplitN(opt, ":", 2)
 		switch optval[0] {
-		case "default":
+		case tagDefault:
 			var val string
 			if len(optval) > 1 {
 				val = optval[1]
@@ -434,7 +438,7 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	}
 	var tags []string
 	if schema.ColumnDefault.Valid {
-		tags = append(tags, "default:"+schema.ColumnDefault.String)
+		tags = append(tags, tagDefault+":"+schema.ColumnDefault.String)
 	}
 	if len(tags) > 0 {
 		field.Tag = &ast.BasicLit{
