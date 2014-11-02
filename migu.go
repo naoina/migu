@@ -179,6 +179,7 @@ func Fprint(output io.Writer, db *sql.DB) error {
 
 const (
 	tagDefault = "default"
+	tagUnique  = "unique"
 )
 
 func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
@@ -402,6 +403,8 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 				val = optval[1]
 			}
 			f.Default = formatDefault(f.Type, val)
+		case tagUnique:
+			f.Unique = true
 		default:
 			return fmt.Errorf("unknown option: `%s'", opt)
 		}
@@ -439,6 +442,9 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	var tags []string
 	if schema.ColumnDefault.Valid {
 		tags = append(tags, tagDefault+":"+schema.ColumnDefault.String)
+	}
+	if schema.ColumnKey == "UNI" {
+		tags = append(tags, tagUnique)
 	}
 	if len(tags) > 0 {
 		field.Tag = &ast.BasicLit{
