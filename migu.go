@@ -461,6 +461,13 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 			Value: fmt.Sprintf("`migu:\"%s\"`", strings.Join(tags, ",")),
 		}
 	}
+	if schema.ColumnComment != "" {
+		field.Comment = &ast.CommentGroup{
+			List: []*ast.Comment{
+				{Text: schema.ColumnComment},
+			},
+		}
+	}
 	return field, nil
 }
 
