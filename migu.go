@@ -97,16 +97,18 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			for _, column := range columns {
 				table[toCamelCase(column.ColumnName)] = column
 			}
+			var modifySQLs []string
+			var dropSQLs []string
 			for _, f := range model {
-				s, err := alterTableSQL(d, tableName, table, f)
+				m, d, err := alterTableSQLs(d, tableName, table, f)
 				if err != nil {
 					return nil, err
 				}
-				if s != "" {
-					migrations = append(migrations, s)
-				}
+				modifySQLs = append(modifySQLs, m...)
+				dropSQLs = append(dropSQLs, d...)
 				delete(table, f.Name)
 			}
+			migrations = append(migrations, append(dropSQLs, modifySQLs...)...)
 			for _, f := range table {
 				migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s DROP %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.ColumnName))))
 			}
@@ -130,9 +132,9 @@ type field struct {
 	Size       int64
 }
 
-func newField(name string, f *ast.Field) (*field, error) {
+func newField(typeName string, f *ast.Field) (*field, error) {
 	ret := &field{
-		Type: name,
+		Type: typeName,
 	}
 	if f.Tag != nil {
 		s, err := strconv.Unquote(f.Tag.Value)
@@ -188,6 +190,10 @@ func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
 	if err != nil {
 		return nil, err
 	}
+	indexMap, err := getIndexMap(db, dbname)
+	if err != nil {
+		return nil, err
+	}
 	query := `
 SELECT
   TABLE_NAME,
@@ -201,6 +207,7 @@ SELECT
   NUMERIC_SCALE,
   COLUMN_TYPE,
   COLUMN_KEY,
+  EXTRA,
   COLUMN_COMMENT
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = ?
@@ -225,12 +232,19 @@ ORDER BY TABLE_NAME, ORDINAL_POSITION`
 			&schema.NumericScale,
 			&schema.ColumnType,
 			&schema.ColumnKey,
+			&schema.Extra,
 			&schema.ColumnComment,
 		); err != nil {
 			return nil, err
 		}
 		tableName := toCamelCase(schema.TableName)
 		tableMap[tableName] = append(tableMap[tableName], schema)
+		if tableIndex, exists := indexMap[schema.TableName]; exists {
+			if info, exists := tableIndex[schema.ColumnName]; exists {
+				schema.NonUnique = info.NonUnique
+				schema.IndexName = info.IndexName
+			}
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -242,6 +256,43 @@ func getCurrentDBName(db *sql.DB) (string, error) {
 	var dbname sql.NullString
 	err := db.QueryRow(`SELECT DATABASE()`).Scan(&dbname)
 	return dbname.String, err
+}
+
+type indexInfo struct {
+	NonUnique int64
+	IndexName string
+}
+
+func getIndexMap(db *sql.DB, dbname string) (map[string]map[string]indexInfo, error) {
+	query := `
+SELECT
+  TABLE_NAME,
+  COLUMN_NAME,
+  NON_UNIQUE,
+  INDEX_NAME
+FROM information_schema.STATISTICS
+WHERE TABLE_SCHEMA = ?`
+	rows, err := db.Query(query, dbname)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	indexMap := make(map[string]map[string]indexInfo)
+	for rows.Next() {
+		var (
+			tableName  string
+			columnName string
+			index      indexInfo
+		)
+		if err := rows.Scan(&tableName, &columnName, &index.NonUnique, &index.IndexName); err != nil {
+			return nil, err
+		}
+		if _, exists := indexMap[tableName]; !exists {
+			indexMap[tableName] = make(map[string]indexInfo)
+		}
+		indexMap[tableName][columnName] = index
+	}
+	return indexMap, rows.Err()
 }
 
 func formatDefault(t, def string) string {
@@ -319,29 +370,50 @@ func columnSQL(d dialect.Dialect, f *field) string {
 	return strings.Join(column, " ")
 }
 
-func alterTableSQL(d dialect.Dialect, tableName string, table map[string]*columnSchema, f *field) (string, error) {
+func alterTableSQLs(d dialect.Dialect, tableName string, table map[string]*columnSchema, f *field) (modifySQLs, dropSQLs []string, err error) {
 	column, exists := table[f.Name]
 	if !exists {
-		colType, null, _ := d.ColumnType(f.Type)
-		s := fmt.Sprintf(`ALTER TABLE %s ADD %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
-		if !null {
-			s += " NOT NULL"
-		}
-		return s, nil
+		return []string{
+			fmt.Sprintf(`ALTER TABLE %s ADD %s`, d.Quote(tableName), columnSQL(d, f)),
+		}, nil, nil
 	}
 	types, err := column.GoFieldTypes()
 	if err != nil {
-		return "", err
+		return nil, nil, err
 	}
-	if !inStrings(types, f.Type) {
-		colType, null, _ := d.ColumnType(f.Type)
-		s := fmt.Sprintf(`ALTER TABLE %s MODIFY %s %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.Name)), colType)
-		if !null {
-			s += " NOT NULL"
+	oldFieldAST, err := column.fieldAST()
+	if err != nil {
+		return nil, nil, err
+	}
+	oldF, err := newField(f.Type, oldFieldAST)
+	if err != nil {
+		return nil, nil, err
+	}
+	oldF.Name = f.Name
+	if !inStrings(types, f.Type) || !reflect.DeepEqual(oldF, f) {
+		tableName = d.Quote(tableName)
+		colSQL := columnSQL(d, f)
+		modifySQLs = append(modifySQLs, fmt.Sprintf(`ALTER TABLE %s MODIFY %s`, tableName, colSQL))
+		var drop []string
+		if oldF.PrimaryKey != f.PrimaryKey && !f.PrimaryKey {
+			drop = append(drop, `DROP PRIMARY KEY`)
+			if column.Extra == "auto_increment" {
+				drop = append(drop, `MODIFY `+colSQL)
+				modifySQLs = nil
+			}
 		}
-		return s, nil
+		if oldF.Unique != f.Unique && !f.Unique {
+			if column.hasPrimaryKey() {
+				drop = append(drop, `DROP PRIMARY KEY`)
+			} else {
+				drop = append(drop, `DROP INDEX `+column.IndexName)
+			}
+		}
+		if len(drop) > 0 {
+			dropSQLs = append(dropSQLs, fmt.Sprintf(`ALTER TABLE %s %s`, tableName, strings.Join(drop, ", ")))
+		}
 	}
-	return "", nil
+	return modifySQLs, dropSQLs, nil
 }
 
 func hasDatetimeColumn(t map[string][]*columnSchema) bool {
@@ -431,7 +503,10 @@ type columnSchema struct {
 	NumericScale           sql.NullInt64
 	ColumnType             string
 	ColumnKey              string
+	Extra                  string
 	ColumnComment          string
+	NonUnique              int64
+	IndexName              string
 }
 
 func (schema *columnSchema) fieldAST() (*ast.Field, error) {
@@ -449,10 +524,10 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	if schema.ColumnDefault.Valid {
 		tags = append(tags, tagDefault+":"+schema.ColumnDefault.String)
 	}
-	switch schema.ColumnKey {
-	case "PRI":
+	if schema.hasPrimaryKey() {
 		tags = append(tags, tagPrimaryKey)
-	case "UNI":
+	}
+	if schema.hasUniqueKey() {
 		tags = append(tags, tagUnique)
 	}
 	if len(tags) > 0 {
@@ -516,4 +591,12 @@ func (schema *columnSchema) isUnsigned() bool {
 
 func (schema *columnSchema) isNullable() bool {
 	return strings.ToUpper(schema.IsNullable) == "YES"
+}
+
+func (schema *columnSchema) hasPrimaryKey() bool {
+	return schema.ColumnKey == "PRI" && strings.ToUpper(schema.IndexName) == "PRIMARY"
+}
+
+func (schema *columnSchema) hasUniqueKey() bool {
+	return schema.ColumnKey != "" && schema.IndexName != "" && !schema.hasPrimaryKey()
 }
