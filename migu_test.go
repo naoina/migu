@@ -22,6 +22,9 @@ func init() {
 }
 
 func TestDiffWithSrc(t *testing.T) {
+	if _, err := db.Exec(`DROP TABLE IF EXISTS user`); err != nil {
+		t.Fatal(err)
+	}
 	src := `package migu_test
 type User struct {
 	Name string
@@ -39,8 +42,10 @@ type User struct {
 	if !reflect.DeepEqual(actual, expect) {
 		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
 	}
-	if _, err := db.Exec(actual[0]); err != nil {
-		t.Fatal(err)
+	for _, s := range actual {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatal(err)
+		}
 	}
 	defer db.Exec(`DROP TABLE IF EXISTS user`)
 
@@ -70,8 +75,10 @@ type User struct {
 	if !reflect.DeepEqual(actual, expect) {
 		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
 	}
-	if _, err := db.Exec(actual[0]); err != nil {
-		t.Fatal(err)
+	for _, s := range actual {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	src = `package migu_test
@@ -89,8 +96,10 @@ type User struct {
 	if !reflect.DeepEqual(actual, expect) {
 		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
 	}
-	if _, err := db.Exec(actual[0]); err != nil {
-		t.Fatal(err)
+	for _, s := range actual {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	src = "package migu_test"
@@ -105,8 +114,10 @@ type User struct {
 	if !reflect.DeepEqual(actual, expect) {
 		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
 	}
-	if _, err := db.Exec(actual[0]); err != nil {
-		t.Fatal(err)
+	for _, s := range actual {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
