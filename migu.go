@@ -334,14 +334,24 @@ func makeStructASTMap(filename string, src interface{}) (map[string]*ast.StructT
 	return structASTMap, nil
 }
 
-func detectTypeName(f *ast.Field) (string, error) {
-	switch t := f.Type.(type) {
+func detectTypeName(n ast.Node) (string, error) {
+	switch t := n.(type) {
+	case *ast.Field:
+		return detectTypeName(t.Type)
 	case *ast.Ident:
 		return t.Name, nil
 	case *ast.SelectorExpr:
-		return t.X.(*ast.Ident).Name + "." + t.Sel.Name, nil
+		name, err := detectTypeName(t.X)
+		if err != nil {
+			return "", err
+		}
+		return name + "." + t.Sel.Name, nil
 	case *ast.StarExpr:
-		return "*" + t.X.(*ast.Ident).Name, nil
+		name, err := detectTypeName(t.X)
+		if err != nil {
+			return "", err
+		}
+		return "*" + name, nil
 	default:
 		return "", fmt.Errorf("migu: BUG: unknown type %T", t)
 	}
@@ -548,21 +558,43 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 
 func (schema *columnSchema) GoFieldTypes() ([]string, error) {
 	switch schema.DataType {
-	case "tinyint", "smallint", "mediumint", "int":
+	case "tinyint":
 		if schema.isUnsigned() {
 			if schema.isNullable() {
-				return []string{"*uint", "sql.NullInt64"}, nil
+				return []string{"*uint8"}, nil
 			}
-			return []string{"uint"}, nil
+			return []string{"uint8"}, nil
 		}
 		if schema.isNullable() {
-			return []string{"*int", "sql.NullInt64"}, nil
+			return []string{"*int8", "*bool", "sql.NullBool"}, nil
 		}
-		return []string{"int"}, nil
+		return []string{"int8", "bool"}, nil
+	case "smallint":
+		if schema.isUnsigned() {
+			if schema.isNullable() {
+				return []string{"*uint16"}, nil
+			}
+			return []string{"uint16"}, nil
+		}
+		if schema.isNullable() {
+			return []string{"*int16"}, nil
+		}
+		return []string{"int16"}, nil
+	case "mediumint", "int":
+		if schema.isUnsigned() {
+			if schema.isNullable() {
+				return []string{"*uint", "*uint32"}, nil
+			}
+			return []string{"uint", "uint32"}, nil
+		}
+		if schema.isNullable() {
+			return []string{"*int", "*int32"}, nil
+		}
+		return []string{"int", "int32"}, nil
 	case "bigint":
 		if schema.isUnsigned() {
 			if schema.isNullable() {
-				return []string{"*uint64", "sql.NullInt64"}, nil
+				return []string{"*uint64"}, nil
 			}
 			return []string{"uint64"}, nil
 		}
@@ -580,6 +612,11 @@ func (schema *columnSchema) GoFieldTypes() ([]string, error) {
 			return []string{"*time.Time"}, nil
 		}
 		return []string{"time.Time"}, nil
+	case "double":
+		if schema.isNullable() {
+			return []string{"*float32", "*float64", "sql.NullFloat64"}, nil
+		}
+		return []string{"float32", "float64"}, nil
 	default:
 		return nil, fmt.Errorf("BUG: unexpected data type: %s", schema.DataType)
 	}
