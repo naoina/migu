@@ -3,6 +3,7 @@ package migu_test
 import (
 	"bytes"
 	"database/sql"
+	"fmt"
 	"reflect"
 	"sort"
 	"testing"
@@ -21,104 +22,138 @@ func init() {
 	}
 }
 
-func TestDiffWithSrc(t *testing.T) {
+func before(t *testing.T) {
 	if _, err := db.Exec(`DROP TABLE IF EXISTS user`); err != nil {
 		t.Fatal(err)
 	}
-	src := `package migu_test
-type User struct {
-	Name string
-	Age  int
-}`
+}
+
+func TestDiffWithSrc(t *testing.T) {
+	before(t)
+	types := map[string]string{
+		"int":             "INT NOT NULL",
+		"int8":            "TINYINT NOT NULL",
+		"int16":           "SMALLINT NOT NULL",
+		"int32":           "INT NOT NULL",
+		"int64":           "BIGINT NOT NULL",
+		"*int":            "INT",
+		"*int8":           "TINYINT",
+		"*int16":          "SMALLINT",
+		"*int32":          "INT",
+		"*int64":          "BIGINT",
+		"uint":            "INT UNSIGNED NOT NULL",
+		"uint8":           "TINYINT UNSIGNED NOT NULL",
+		"uint16":          "SMALLINT UNSIGNED NOT NULL",
+		"uint32":          "INT UNSIGNED NOT NULL",
+		"uint64":          "BIGINT UNSIGNED NOT NULL",
+		"*uint":           "INT UNSIGNED",
+		"*uint8":          "TINYINT UNSIGNED",
+		"*uint16":         "SMALLINT UNSIGNED",
+		"*uint32":         "INT UNSIGNED",
+		"*uint64":         "BIGINT UNSIGNED",
+		"sql.NullInt64":   "BIGINT",
+		"string":          "VARCHAR(255) NOT NULL",
+		"*string":         "VARCHAR(255)",
+		"sql.NullString":  "VARCHAR(255)",
+		"bool":            "TINYINT NOT NULL",
+		"*bool":           "TINYINT",
+		"sql.NullBool":    "TINYINT",
+		"float32":         "DOUBLE NOT NULL",
+		"float64":         "DOUBLE NOT NULL",
+		"*float32":        "DOUBLE",
+		"*float64":        "DOUBLE",
+		"sql.NullFloat64": "DOUBLE",
+		"time.Time":       "DATETIME NOT NULL",
+		"*time.Time":      "DATETIME",
+	}
+	for t1, s1 := range types {
+		for t2, s2 := range types {
+			if err := testDiffWithSrc(t, t1, s1, t2, s2); err != nil {
+				t.Error(err)
+				continue
+			}
+		}
+	}
+}
+
+func testDiffWithSrc(t *testing.T, t1, s1, t2, s2 string) error {
+	src := fmt.Sprintf("package migu_test\n"+
+		"type User struct {\n"+
+		"	A %s\n"+
+		"}", t1)
 	results, err := migu.Diff(db, "", src)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	actual := results
-	expect := []string{"CREATE TABLE `user` (\n" +
-		"  `name` VARCHAR(255) NOT NULL,\n" +
-		"  `age` INT NOT NULL\n" +
-		")"}
+	expect := []string{
+		fmt.Sprintf("CREATE TABLE `user` (\n"+
+			"  `a` %s\n"+
+			")", s1),
+	}
 	if !reflect.DeepEqual(actual, expect) {
-		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
+		t.Errorf(`create: migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
 	}
 	for _, s := range actual {
 		if _, err := db.Exec(s); err != nil {
-			t.Fatal(err)
+			return err
 		}
 	}
-	defer db.Exec(`DROP TABLE IF EXISTS user`)
+	defer db.Exec("DROP TABLE IF EXISTS `user`")
 
 	results, err = migu.Diff(db, "", src)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	actual = results
 	expect = []string(nil)
 	if !reflect.DeepEqual(actual, expect) {
-		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
+		return fmt.Errorf(`before: migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
 	}
 
-	src = `package migu_test
-type User struct {
-	Name string
-	Age  uint
-}`
+	src = fmt.Sprintf("package migu_test\n"+
+		"type User struct {\n"+
+		"	A %s\n"+
+		"}", t2)
 	results, err = migu.Diff(db, "", src)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	actual = results
-	expect = []string{"ALTER TABLE `user` MODIFY `age` INT UNSIGNED NOT NULL"}
+	if s1 == s2 {
+		expect = []string(nil)
+	} else {
+		expect = []string{"ALTER TABLE `user` MODIFY `a` " + s2}
+	}
 	sort.Strings(actual)
 	sort.Strings(expect)
 	if !reflect.DeepEqual(actual, expect) {
-		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
+		return fmt.Errorf(`diff: %s to %s; migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, t1, t2, src, actual, expect)
 	}
 	for _, s := range actual {
 		if _, err := db.Exec(s); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	src = `package migu_test
-type User struct {
-	Age uint
-}`
-	results, err = migu.Diff(db, "", src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	actual = results
-	expect = []string{"ALTER TABLE `user` DROP `name`"}
-	sort.Strings(actual)
-	sort.Strings(expect)
-	if !reflect.DeepEqual(actual, expect) {
-		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
-	}
-	for _, s := range actual {
-		if _, err := db.Exec(s); err != nil {
-			t.Fatal(err)
+			return err
 		}
 	}
 
 	src = "package migu_test"
 	results, err = migu.Diff(db, "", src)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	actual = results
 	expect = []string{"DROP TABLE `user`"}
 	sort.Strings(actual)
 	sort.Strings(expect)
 	if !reflect.DeepEqual(actual, expect) {
-		t.Errorf(`migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
+		return fmt.Errorf(`drop: migu.Diff(db, "", %q) => %#v, nil; want %#v, nil`, src, actual, expect)
 	}
 	for _, s := range actual {
 		if _, err := db.Exec(s); err != nil {
-			t.Fatal(err)
+			return err
 		}
 	}
+	return nil
 }
 
 func TestFprint(t *testing.T) {
