@@ -129,7 +129,7 @@ type field struct {
 	Unique     bool
 	PrimaryKey bool
 	Default    string
-	Size       int64
+	Size       uint64
 }
 
 func newField(typeName string, f *ast.Field) (*field, error) {
@@ -183,6 +183,7 @@ const (
 	tagDefault    = "default"
 	tagPrimaryKey = "pk"
 	tagUnique     = "unique"
+	tagSize       = "size"
 )
 
 func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
@@ -358,7 +359,7 @@ func detectTypeName(n ast.Node) (string, error) {
 }
 
 func columnSQL(d dialect.Dialect, f *field) string {
-	colType, null, autoIncrementable := d.ColumnType(f.Type)
+	colType, null, autoIncrementable := d.ColumnType(f.Type, f.Size)
 	column := []string{d.Quote(toSnakeCase(f.Name)), colType}
 	if !null {
 		column = append(column, "NOT NULL")
@@ -493,6 +494,15 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 			f.PrimaryKey = true
 		case tagUnique:
 			f.Unique = true
+		case tagSize:
+			if len(optval) < 2 {
+				return fmt.Errorf("`size' tag must specify the parameter")
+			}
+			size, err := strconv.ParseUint(optval[1], 10, 64)
+			if err != nil {
+				return err
+			}
+			f.Size = size
 		default:
 			return fmt.Errorf("unknown option: `%s'", opt)
 		}
@@ -507,7 +517,7 @@ type columnSchema struct {
 	ColumnDefault          sql.NullString
 	IsNullable             string
 	DataType               string
-	CharacterMaximumLength sql.NullInt64
+	CharacterMaximumLength *uint64
 	CharacterOctetLength   sql.NullInt64
 	NumericPrecision       sql.NullInt64
 	NumericScale           sql.NullInt64
@@ -539,6 +549,9 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	}
 	if schema.hasUniqueKey() {
 		tags = append(tags, tagUnique)
+	}
+	if schema.hasSize() {
+		tags = append(tags, fmt.Sprintf("%s:%d", tagSize, schema.CharacterMaximumLength))
 	}
 	if len(tags) > 0 {
 		field.Tag = &ast.BasicLit{
@@ -636,4 +649,8 @@ func (schema *columnSchema) hasPrimaryKey() bool {
 
 func (schema *columnSchema) hasUniqueKey() bool {
 	return schema.ColumnKey != "" && schema.IndexName != "" && !schema.hasPrimaryKey()
+}
+
+func (schema *columnSchema) hasSize() bool {
+	return schema.DataType == "varchar" && schema.CharacterMaximumLength != nil && *schema.CharacterMaximumLength != uint64(255)
 }

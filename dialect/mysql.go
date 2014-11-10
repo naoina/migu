@@ -8,12 +8,12 @@ import (
 type MySQL struct {
 }
 
-func (d *MySQL) ColumnType(name string) (typ string, null, autoIncrementable bool) {
+func (d *MySQL) ColumnType(name string, size uint64) (typ string, null, autoIncrementable bool) {
 	switch name {
 	case "string":
-		return "VARCHAR(255)", false, false
+		return d.varchar(size), false, false
 	case "sql.NullString", "*string":
-		return "VARCHAR(255)", true, false
+		return d.varchar(size), true, false
 	case "int", "int32":
 		return "INT", false, true
 	case "*int", "*int32":
@@ -65,4 +65,21 @@ func (d *MySQL) ColumnType(name string) (typ string, null, autoIncrementable boo
 
 func (d *MySQL) Quote(s string) string {
 	return fmt.Sprintf("`%s`", strings.Replace(s, "`", "``", -1))
+}
+
+func (d *MySQL) varchar(size uint64) string {
+	if size == 0 {
+		size = 255 // default.
+	}
+	switch {
+	case size < 21846:
+		return fmt.Sprintf("VARCHAR(%d)", size)
+	case size < (1<<16)-1-2: // approximate 64KB.
+		// 65533 ((2^16) - 1) - (length of prefix)
+		// See http://dev.mysql.com/doc/refman/5.5/en/string-type-overview.html#idm140418628949072
+		return "TEXT"
+	case size < 1<<24: // 16MB.
+		return "MEDIUMTEXT"
+	}
+	return "LONGTEXT"
 }
