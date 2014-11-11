@@ -67,6 +67,10 @@ func (d *MySQL) Quote(s string) string {
 	return fmt.Sprintf("`%s`", strings.Replace(s, "`", "``", -1))
 }
 
+func (d *MySQL) QuoteString(s string) string {
+	return fmt.Sprintf("'%s'", strings.Replace(s, "'", "''", -1))
+}
+
 func (d *MySQL) AutoIncrement() string {
 	return "AUTO_INCREMENT"
 }

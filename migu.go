@@ -296,10 +296,10 @@ WHERE TABLE_SCHEMA = ?`
 	return indexMap, rows.Err()
 }
 
-func formatDefault(t, def string) string {
+func formatDefault(d dialect.Dialect, t, def string) string {
 	switch t {
 	case "string":
-		return `'` + def + `'`
+		return d.QuoteString(def)
 	default:
 		return def
 	}
@@ -365,7 +365,7 @@ func columnSQL(d dialect.Dialect, f *field) string {
 		column = append(column, "NOT NULL")
 	}
 	if f.Default != "" {
-		column = append(column, "DEFAULT", f.Default)
+		column = append(column, "DEFAULT", formatDefault(d, f.Type, f.Default))
 	}
 	if f.PrimaryKey {
 		if autoIncrementable {
@@ -376,7 +376,7 @@ func columnSQL(d dialect.Dialect, f *field) string {
 		column = append(column, "UNIQUE")
 	}
 	if f.Comment != "" {
-		column = append(column, "COMMENT", fmt.Sprintf("'%s'", f.Comment))
+		column = append(column, "COMMENT", d.QuoteString(f.Comment))
 	}
 	return strings.Join(column, " ")
 }
@@ -485,11 +485,9 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 		optval := strings.SplitN(opt, ":", 2)
 		switch optval[0] {
 		case tagDefault:
-			var val string
 			if len(optval) > 1 {
-				val = optval[1]
+				f.Default = optval[1]
 			}
-			f.Default = formatDefault(f.Type, val)
 		case tagPrimaryKey:
 			f.PrimaryKey = true
 		case tagUnique:
