@@ -359,7 +359,7 @@ func detectTypeName(n ast.Node) (string, error) {
 }
 
 func columnSQL(d dialect.Dialect, f *field) string {
-	colType, null, autoIncrementable := d.ColumnType(f.Type, f.Size)
+	colType, null, autoIncrementable := d.ColumnType(f.Type, f.Size, f.PrimaryKey)
 	column := []string{d.Quote(toSnakeCase(f.Name)), colType}
 	if !null {
 		column = append(column, "NOT NULL")
@@ -369,7 +369,7 @@ func columnSQL(d dialect.Dialect, f *field) string {
 	}
 	if f.PrimaryKey {
 		if autoIncrementable {
-			column = append(column, "AUTO_INCREMENT")
+			column = append(column, d.AutoIncrement())
 		}
 		column = append(column, "PRIMARY KEY")
 	} else if f.Unique {

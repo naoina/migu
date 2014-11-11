@@ -8,7 +8,7 @@ import (
 type MySQL struct {
 }
 
-func (d *MySQL) ColumnType(name string, size uint64) (typ string, null, autoIncrementable bool) {
+func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ string, null, autoIncrementable bool) {
 	switch name {
 	case "string":
 		return d.varchar(size), false, false
@@ -65,6 +65,10 @@ func (d *MySQL) ColumnType(name string, size uint64) (typ string, null, autoIncr
 
 func (d *MySQL) Quote(s string) string {
 	return fmt.Sprintf("`%s`", strings.Replace(s, "`", "``", -1))
+}
+
+func (d *MySQL) AutoIncrement() string {
+	return "AUTO_INCREMENT"
 }
 
 func (d *MySQL) varchar(size uint64) string {
