@@ -372,7 +372,8 @@ func columnSQL(d dialect.Dialect, f *field) string {
 			column = append(column, d.AutoIncrement())
 		}
 		column = append(column, "PRIMARY KEY")
-	} else if f.Unique {
+	}
+	if f.Unique {
 		column = append(column, "UNIQUE")
 	}
 	if f.Comment != "" {
