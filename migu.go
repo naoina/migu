@@ -123,13 +123,14 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 }
 
 type field struct {
-	Name       string
-	Type       string
-	Comment    string
-	Unique     bool
-	PrimaryKey bool
-	Default    string
-	Size       uint64
+	Name          string
+	Type          string
+	Comment       string
+	Unique        bool
+	PrimaryKey    bool
+	AutoIncrement bool
+	Default       string
+	Size          uint64
 }
 
 func newField(typeName string, f *ast.Field) (*field, error) {
@@ -180,10 +181,11 @@ func Fprint(output io.Writer, db *sql.DB) error {
 }
 
 const (
-	tagDefault    = "default"
-	tagPrimaryKey = "pk"
-	tagUnique     = "unique"
-	tagSize       = "size"
+	tagDefault       = "default"
+	tagPrimaryKey    = "pk"
+	tagAutoIncrement = "autoincrement"
+	tagUnique        = "unique"
+	tagSize          = "size"
 )
 
 func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
@@ -359,7 +361,7 @@ func detectTypeName(n ast.Node) (string, error) {
 }
 
 func columnSQL(d dialect.Dialect, f *field) string {
-	colType, null, autoIncrementable := d.ColumnType(f.Type, f.Size, f.PrimaryKey)
+	colType, null := d.ColumnType(f.Type, f.Size, f.AutoIncrement)
 	column := []string{d.Quote(toSnakeCase(f.Name)), colType}
 	if !null {
 		column = append(column, "NOT NULL")
@@ -368,10 +370,10 @@ func columnSQL(d dialect.Dialect, f *field) string {
 		column = append(column, "DEFAULT", formatDefault(d, f.Type, f.Default))
 	}
 	if f.PrimaryKey {
-		if autoIncrementable {
-			column = append(column, d.AutoIncrement())
-		}
 		column = append(column, "PRIMARY KEY")
+	}
+	if f.AutoIncrement && d.AutoIncrement() != "" {
+		column = append(column, d.AutoIncrement())
 	}
 	if f.Unique {
 		column = append(column, "UNIQUE")
@@ -409,7 +411,7 @@ func alterTableSQLs(d dialect.Dialect, tableName string, table map[string]*colum
 		var drop []string
 		if oldF.PrimaryKey != f.PrimaryKey && !f.PrimaryKey {
 			drop = append(drop, `DROP PRIMARY KEY`)
-			if column.Extra == "auto_increment" {
+			if column.hasAutoIncrement() {
 				drop = append(drop, `MODIFY `+colSQL)
 				modifySQLs = nil
 			}
@@ -491,6 +493,8 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 			}
 		case tagPrimaryKey:
 			f.PrimaryKey = true
+		case tagAutoIncrement:
+			f.AutoIncrement = true
 		case tagUnique:
 			f.Unique = true
 		case tagSize:
@@ -545,6 +549,9 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	}
 	if schema.hasPrimaryKey() {
 		tags = append(tags, tagPrimaryKey)
+	}
+	if schema.hasAutoIncrement() {
+		tags = append(tags, tagAutoIncrement)
 	}
 	if schema.hasUniqueKey() {
 		tags = append(tags, tagUnique)
@@ -644,6 +651,10 @@ func (schema *columnSchema) isNullable() bool {
 
 func (schema *columnSchema) hasPrimaryKey() bool {
 	return schema.ColumnKey == "PRI" && strings.ToUpper(schema.IndexName) == "PRIMARY"
+}
+
+func (schema *columnSchema) hasAutoIncrement() bool {
+	return schema.Extra == "auto_increment"
 }
 
 func (schema *columnSchema) hasUniqueKey() bool {

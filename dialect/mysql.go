@@ -8,58 +8,58 @@ import (
 type MySQL struct {
 }
 
-func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ string, null, autoIncrementable bool) {
+func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ string, null bool) {
 	switch name {
 	case "string":
-		return d.varchar(size), false, false
+		return d.varchar(size), false
 	case "sql.NullString", "*string":
-		return d.varchar(size), true, false
+		return d.varchar(size), true
 	case "int", "int32":
-		return "INT", false, true
+		return "INT", false
 	case "*int", "*int32":
-		return "INT", true, true
+		return "INT", true
 	case "int8":
-		return "TINYINT", false, true
+		return "TINYINT", false
 	case "*int8":
-		return "TINYINT", true, true
+		return "TINYINT", true
 	case "bool":
-		return "TINYINT", false, false
+		return "TINYINT", false
 	case "*bool", "sql.NullBool":
-		return "TINYINT", true, false
+		return "TINYINT", true
 	case "int16":
-		return "SMALLINT", false, true
+		return "SMALLINT", false
 	case "*int16":
-		return "SMALLINT", true, true
+		return "SMALLINT", true
 	case "int64":
-		return "BIGINT", false, true
+		return "BIGINT", false
 	case "sql.NullInt64", "*int64":
-		return "BIGINT", true, true
+		return "BIGINT", true
 	case "uint", "uint32":
-		return "INT UNSIGNED", false, true
+		return "INT UNSIGNED", false
 	case "*uint", "*uint32":
-		return "INT UNSIGNED", true, true
+		return "INT UNSIGNED", true
 	case "uint8":
-		return "TINYINT UNSIGNED", false, true
+		return "TINYINT UNSIGNED", false
 	case "*uint8":
-		return "TINYINT UNSIGNED", true, true
+		return "TINYINT UNSIGNED", true
 	case "uint16":
-		return "SMALLINT UNSIGNED", false, true
+		return "SMALLINT UNSIGNED", false
 	case "*uint16":
-		return "SMALLINT UNSIGNED", true, true
+		return "SMALLINT UNSIGNED", true
 	case "uint64":
-		return "BIGINT UNSIGNED", false, true
+		return "BIGINT UNSIGNED", false
 	case "*uint64":
-		return "BIGINT UNSIGNED", true, true
+		return "BIGINT UNSIGNED", true
 	case "float32", "float64":
-		return "DOUBLE", false, true
+		return "DOUBLE", false
 	case "sql.NullFloat64", "*float32", "*float64":
-		return "DOUBLE", true, true
+		return "DOUBLE", true
 	case "time.Time":
-		return "DATETIME", false, false
+		return "DATETIME", false
 	case "*time.Time":
-		return "DATETIME", true, false
+		return "DATETIME", true
 	default:
-		return "VARCHAR(255)", true, false
+		return "VARCHAR(255)", true
 	}
 }
 
