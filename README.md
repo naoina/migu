@@ -10,7 +10,7 @@ This tool is inspired by [Ridgepole](https://github.com/winebarrel/ridgepole).
 
     go get -u github.com/naoina/migu/cmd/migu
 
-## Usage
+## Basic usage
 
 Save the following Go code as `schema.go`:
 
@@ -66,6 +66,54 @@ Then type the following commands again:
 A type of field `age` on `user` table has been changed because type of `Age` in `schema.go` was changed from `int` to `uint`.
 
 See `migu --help` for more options.
+
+## Detailed definition of the column by struct field's tag
+
+You can specify the detailed definition of the column by some struct field's tags.
+
+#### PRIMARY KEY
+
+```go
+ID int64 `migu:"pk"`
+```
+
+#### AUTOINCREMENT
+
+```go
+ID int64 `migu:"autoincrement"`
+```
+
+#### UNIQUE
+
+```go
+Email string `migu:"unique"`
+```
+
+#### DEFAULT
+
+```go
+Active bool `migu:"default:true"`
+```
+
+If the field type is string, the value doesn't need to be quoted because the value type will be guess by Migu.
+
+```go
+Active string `migu:"default:yes"`
+```
+
+#### SIZE
+
+```go
+Body string `migu:"size:512"` // VARCHAR(512)
+```
+
+### Specify the multiple struct field's tags
+
+To specify the multiple struct field's tags to the single column, join with commas.
+
+```go
+Email string `migu:"unique,size:512"`
+```
 
 ## Supported database
 
