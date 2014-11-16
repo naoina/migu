@@ -73,9 +73,11 @@ func (s *sync) run(db *sql.DB, file string) error {
 	if err != nil {
 		return err
 	}
-	tx, err := db.Begin()
-	if err != nil {
-		return err
+	var tx *sql.Tx
+	if !s.DryRun {
+		if tx, err = db.Begin(); err != nil {
+			return err
+		}
 	}
 	for _, sql := range sqls {
 		s.printf("--------%sapplying--------\n", dryRunMarker)
