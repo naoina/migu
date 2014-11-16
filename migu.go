@@ -568,7 +568,7 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	if schema.ColumnComment != "" {
 		field.Comment = &ast.CommentGroup{
 			List: []*ast.Comment{
-				{Text: schema.ColumnComment},
+				{Text: " // " + schema.ColumnComment},
 			},
 		}
 	}
