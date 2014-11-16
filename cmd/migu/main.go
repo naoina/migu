@@ -20,10 +20,10 @@ var (
 
 Commands:
   sync      synchronize the database schema
+  dump      dump the database schema as Go code
 
 Options:
       --help             Display this help and exit
-
 `, progName)
 )
 
@@ -74,6 +74,8 @@ func run(args []string) error {
 	switch c := args[0]; c {
 	case "sync":
 		cmd = &sync{}
+	case "dump":
+		cmd = &dump{}
 	default:
 		return &usageError{
 			usage: usage,
