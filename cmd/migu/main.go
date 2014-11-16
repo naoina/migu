@@ -3,176 +3,154 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/howeyc/gopass"
 	"github.com/jessevdk/go-flags"
-	"github.com/naoina/migu"
 )
 
 var (
 	progName = filepath.Base(os.Args[0])
 	option   struct {
-		User     string `short:"u" long:"user"`
-		Host     string `short:"h" long:"host"`
-		Password string `short:"p" long:"password" optional:"true" optional-value:"\x00"`
-		DryRun   bool   `long:"dry-run"`
-		Quiet    bool   `short:"q" long:"quiet"`
-		Help     bool   `long:"help"`
-
-		cmd    string
-		file   string
-		dbname string
+		Help bool `long:"help"`
 	}
-	dryRunMarker = "dry-run "
-	printf       = fmt.Printf
-)
-
-type usageError struct {
-	error
-}
-
-func usage(code int) {
-	fmt.Fprintf(os.Stderr, `Usage: %s [OPTIONS] COMMAND DATABASE [FILE]
+	usage = fmt.Sprintf(`Usage: %s [OPTIONS] COMMAND [ARG...]
 
 Commands:
   sync      synchronize the database schema
 
 Options:
-  -u, --user=NAME        User for login to database if not current user
-  -h, --host=HOST        Connect to host of database
-  -p, --password[=PASS]  Password to use when connecting to server.
-                         If password is not given, it's asked from the tty
-      --dry-run          Print the results with no changes
-  -q, --quiet            Suppress non-error messages
       --help             Display this help and exit
 
-With no FILE, or when FILE is -, read standard input.
-
 `, progName)
-	os.Exit(code)
+)
+
+type GeneralOption struct {
+	User     string `short:"u" long:"user"`
+	Host     string `short:"h" long:"host"`
+	Password string `short:"p" long:"password" optional:"true" optional-value:"\x00"`
+	Help     bool   `long:"help"`
+}
+
+func (o *GeneralOption) Usage() string {
+	return "" +
+		"  -u, --user=NAME        User for login to database if not current user\n" +
+		"  -h, --host=HOST        Connect to host of database\n" +
+		"  -u, --user=NAME        User for login to database if not current user\n" +
+		"  -p, --password[=PASS]  Password to use when connecting to server.\n" +
+		"                         If password is not given, it's asked from the tty\n" +
+		"      --help             Display this help and exit\n"
+}
+
+func (o *GeneralOption) ShowHelp() bool {
+	return o.Help
+}
+
+type Command interface {
+	Execute(args []string) error
+	Usage() string
+	ShowHelp() bool
+}
+
+type usageError struct {
+	usage string
+	err   error
+}
+
+func (u *usageError) Error() string {
+	return fmt.Sprintf("%v\n%v", u.err, u.usage)
 }
 
 func run(args []string) error {
-	switch len(args) {
-	case 0, 1:
+	if len(args) < 1 {
 		return &usageError{
-			error: fmt.Errorf("too few arguments"),
-		}
-	case 2:
-		option.cmd, option.dbname = args[0], args[1]
-	case 3:
-		option.cmd, option.dbname, option.file = args[0], args[1], args[2]
-	default:
-		return &usageError{
-			error: fmt.Errorf("too many arguments"),
+			usage: usage,
+			err:   fmt.Errorf("too few arguments"),
 		}
 	}
-	db, err := database()
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	switch option.cmd {
+	var cmd Command
+	switch c := args[0]; c {
 	case "sync":
-		return sync(db)
+		cmd = &sync{}
 	default:
 		return &usageError{
-			error: fmt.Errorf("unknown command: %s", option.cmd),
+			usage: usage,
+			err:   fmt.Errorf("unknown command: %s", c),
 		}
 	}
-}
-
-func sync(db *sql.DB) error {
-	var src io.Reader
-	switch option.file {
-	case "", "-":
-		option.file = ""
-		src = os.Stdin
-	}
-	sqls, err := migu.Diff(db, option.file, src)
+	parser, err := newParser(cmd)
 	if err != nil {
 		return err
 	}
-	tx, err := db.Begin()
+	args, err = parser.ParseArgs(args[1:])
 	if err != nil {
 		return err
 	}
-	for _, sql := range sqls {
-		printf("--------%sapplying--------\n", dryRunMarker)
-		printf("  %s\n", strings.Replace(sql, "\n", "\n  ", -1))
-		start := time.Now()
-		if !option.DryRun {
-			if _, err := tx.Exec(sql); err != nil {
-				tx.Rollback()
-				return err
-			}
-		}
-		d := time.Since(start)
-		printf("--------%sdone %.3fs--------\n", dryRunMarker, d.Seconds()/time.Second.Seconds())
-	}
-	if option.DryRun {
+	if cmd.ShowHelp() {
+		fmt.Fprintf(os.Stderr, cmd.Usage())
 		return nil
-	} else {
-		return tx.Commit()
 	}
+	if err := cmd.Execute(args); err != nil {
+		if err, ok := err.(*usageError); ok && err.usage == "" {
+			err.usage = cmd.Usage()
+		}
+		return err
+	}
+	return nil
 }
 
-func database() (db *sql.DB, err error) {
-	if option.User == "" {
-		if option.User = os.Getenv("USERNAME"); option.User == "" {
-			if option.User = os.Getenv("USER"); option.User == "" {
+func database(host, user, password, dbname string) (db *sql.DB, err error) {
+	if user == "" {
+		if user = os.Getenv("USERNAME"); user == "" {
+			if user = os.Getenv("USER"); user == "" {
 				return nil, fmt.Errorf("user is not specified and current user cannot be detected")
 			}
 		}
 	}
-	dsn := []byte(option.User)
-	if option.Password != "" {
-		if option.Password == "\x00" {
+	dsn := []byte(user)
+	if password != "" {
+		if password == "\x00" {
 			fmt.Printf("Enter password: ")
-			option.Password = string(gopass.GetPasswd())
+			password = string(gopass.GetPasswd())
 		}
-		dsn = append(append(dsn, ':'), option.Password...)
+		dsn = append(append(dsn, ':'), password...)
 	}
 	if len(dsn) > 0 {
 		dsn = append(dsn, '@')
 	}
-	if option.Host != "" {
-		dsn = append(append(append(dsn, "tcp("...), option.Host...), ')')
+	if host != "" {
+		dsn = append(append(append(dsn, "tcp("...), host...), ')')
 	}
-	dsn = append(append(dsn, '/'), option.dbname...)
+	dsn = append(append(dsn, '/'), dbname...)
 	return sql.Open("mysql", string(dsn))
 }
 
-func main() {
+func newParser(option interface{}) (*flags.Parser, error) {
 	parser := flags.NewNamedParser(progName, flags.PrintErrors|flags.PassDoubleDash|flags.PassAfterNonOption)
-	if _, err := parser.AddGroup("", "", &option); err != nil {
+	if _, err := parser.AddGroup("", "", option); err != nil {
+		return nil, err
+	}
+	return parser, nil
+}
+
+func main() {
+	parser, err := newParser(&option)
+	if err != nil {
 		panic(err)
 	}
 	args, err := parser.Parse()
 	if err != nil {
-		usage(1)
+		fmt.Fprintf(os.Stderr, usage)
+		os.Exit(1)
 	}
 	if option.Help {
-		usage(0)
-	}
-	if !option.DryRun {
-		dryRunMarker = ""
-	}
-	if option.Quiet {
-		printf = func(string, ...interface{}) (int, error) { return 0, nil }
+		fmt.Fprintf(os.Stderr, usage)
+		os.Exit(0)
 	}
 	if err := run(args); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
-		if _, ok := err.(*usageError); ok {
-			usage(1)
-		} else {
-			os.Exit(1)
-		}
+		fmt.Fprintf(os.Stderr, "%s: %v", progName, err)
+		os.Exit(1)
 	}
 }
