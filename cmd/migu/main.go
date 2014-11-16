@@ -89,7 +89,7 @@ func run(args []string) error {
 		return err
 	}
 	if cmd.ShowHelp() {
-		fmt.Fprintf(os.Stderr, cmd.Usage())
+		fmt.Fprintln(os.Stderr, cmd.Usage())
 		return nil
 	}
 	if err := cmd.Execute(args); err != nil {
@@ -142,15 +142,15 @@ func main() {
 	}
 	args, err := parser.Parse()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, usage)
+		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(1)
 	}
 	if option.Help {
-		fmt.Fprintf(os.Stderr, usage)
+		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(0)
 	}
 	if err := run(args); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v", progName, err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
 		os.Exit(1)
 	}
 }

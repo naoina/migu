@@ -30,7 +30,6 @@ Options:
   -q, --quiet            Suppress non-error messages
 %s
 With no FILE, or when FILE is -, read standard input.
-
 `, progName, s.GeneralOption.Usage())
 }
 
