@@ -557,7 +557,7 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 		tags = append(tags, tagUnique)
 	}
 	if schema.hasSize() {
-		tags = append(tags, fmt.Sprintf("%s:%d", tagSize, schema.CharacterMaximumLength))
+		tags = append(tags, fmt.Sprintf("%s:%d", tagSize, *schema.CharacterMaximumLength))
 	}
 	if len(tags) > 0 {
 		field.Tag = &ast.BasicLit{
