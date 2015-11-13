@@ -107,6 +107,12 @@ Active string `migu:"default:yes"`
 Body string `migu:"size:512"` // VARCHAR(512)
 ```
 
+#### IGNORE
+
+```go
+Body string `migu:"-"` // Ignore during migration
+```
+
 ### Specify the multiple struct field's tags
 
 To specify the multiple struct field's tags to the single column, join with commas.
