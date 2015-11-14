@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/naoina/migu/dialect"
+	"github.com/serenize/snaker"
 )
 
 // Sync synchronizes the schema between Go's struct and the database.
@@ -86,7 +87,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 	for _, name := range names {
 		model := structMap[name]
 		columns, ok := tableMap[name]
-		tableName := toSnakeCase(name)
+		tableName := snaker.CamelToSnake(name)
 		if !ok {
 			columns := make([]string, len(model))
 			for i, f := range model {
@@ -98,7 +99,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		} else {
 			table := map[string]*columnSchema{}
 			for _, column := range columns {
-				table[toCamelCase(column.ColumnName)] = column
+				table[snaker.SnakeToCamel(column.ColumnName)] = column
 			}
 			var modifySQLs []string
 			var dropSQLs []string
@@ -113,14 +114,14 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			}
 			migrations = append(migrations, append(dropSQLs, modifySQLs...)...)
 			for _, f := range table {
-				migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s DROP %s`, d.Quote(tableName), d.Quote(toSnakeCase(f.ColumnName))))
+				migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s DROP %s`, d.Quote(tableName), d.Quote(snaker.CamelToSnake(f.ColumnName))))
 			}
 		}
 		delete(structMap, name)
 		delete(tableMap, name)
 	}
 	for name := range tableMap {
-		migrations = append(migrations, fmt.Sprintf(`DROP TABLE %s`, d.Quote(toSnakeCase(name))))
+		migrations = append(migrations, fmt.Sprintf(`DROP TABLE %s`, d.Quote(snaker.CamelToSnake(name))))
 	}
 	return migrations, nil
 }
@@ -245,7 +246,7 @@ ORDER BY TABLE_NAME, ORDINAL_POSITION`
 		); err != nil {
 			return nil, err
 		}
-		tableName := toCamelCase(schema.TableName)
+		tableName := snaker.SnakeToCamel(schema.TableName)
 		tableMap[tableName] = append(tableMap[tableName], schema)
 		if tableIndex, exists := indexMap[schema.TableName]; exists {
 			if info, exists := tableIndex[schema.ColumnName]; exists {
@@ -367,7 +368,7 @@ func detectTypeName(n ast.Node) (string, error) {
 
 func columnSQL(d dialect.Dialect, f *field) string {
 	colType, null := d.ColumnType(f.Type, f.Size, f.AutoIncrement)
-	column := []string{d.Quote(toSnakeCase(f.Name)), colType}
+	column := []string{d.Quote(snaker.CamelToSnake(f.Name)), colType}
 	if !null {
 		column = append(column, "NOT NULL")
 	}
@@ -473,7 +474,7 @@ func structAST(name string, schemas []*columnSchema) (ast.Decl, error) {
 		Tok: token.TYPE,
 		Specs: []ast.Spec{
 			&ast.TypeSpec{
-				Name: ast.NewIdent(toCamelCase(name)),
+				Name: ast.NewIdent(snaker.SnakeToCamel(name)),
 				Type: &ast.StructType{
 					Fields: &ast.FieldList{
 						List: fields,
@@ -546,7 +547,7 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	}
 	field := &ast.Field{
 		Names: []*ast.Ident{
-			ast.NewIdent(toCamelCase(schema.ColumnName)),
+			ast.NewIdent(snaker.SnakeToCamel(schema.ColumnName)),
 		},
 		Type: ast.NewIdent(types[0]),
 	}
