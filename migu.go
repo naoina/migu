@@ -428,10 +428,6 @@ func alterTableSQLs(d dialect.Dialect, tableName string, table map[string]*colum
 			fmt.Sprintf(`ALTER TABLE %s ADD %s`, d.Quote(tableName), columnSQL(d, f)),
 		}, nil, nil
 	}
-	types, err := column.GoFieldTypes()
-	if err != nil {
-		return nil, nil, err
-	}
 	oldFieldAST, err := column.fieldAST()
 	if err != nil {
 		return nil, nil, err
@@ -441,7 +437,7 @@ func alterTableSQLs(d dialect.Dialect, tableName string, table map[string]*colum
 		return nil, nil, err
 	}
 	oldF.Name = f.Name
-	if !inStrings(types, f.Type) || !reflect.DeepEqual(oldF, f) {
+	if !reflect.DeepEqual(oldF, f) {
 		tableName = d.Quote(tableName)
 		colSQL := columnSQL(d, f)
 		modifySQLs = append(modifySQLs, fmt.Sprintf(`ALTER TABLE %s MODIFY %s`, tableName, colSQL))
