@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -35,7 +36,7 @@ With no FILE, or when FILE is -, read standard input.
 
 func (s *sync) Execute(args []string) error {
 	var dbname string
-	var file string
+	var path string
 	switch len(args) {
 	case 0:
 		return &usageError{
@@ -44,7 +45,7 @@ func (s *sync) Execute(args []string) error {
 	case 1:
 		dbname = args[0]
 	case 2:
-		dbname, file = args[0], args[1]
+		dbname, path = args[0], args[1]
 	default:
 		return &usageError{
 			err: fmt.Errorf("too many arguments"),
@@ -58,17 +59,46 @@ func (s *sync) Execute(args []string) error {
 	if !s.DryRun {
 		dryRunMarker = ""
 	}
-	return s.run(db, file)
+	fInfo, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	filenames := []string{}
+	if fInfo.IsDir() {
+		if filenames, err = walk(path); err != nil {
+			return err
+		}
+	} else {
+		filenames = append(filenames, path)
+	}
+	return s.run(db, filenames)
 }
 
-func (s *sync) run(db *sql.DB, file string) error {
-	var src io.Reader
-	switch file {
-	case "", "-":
-		file = ""
-		src = os.Stdin
+func walk(root string) ([]string, error) {
+	filenames := []string{}
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if info.IsDir() {
+			return nil
+		}
+		filenames = append(filenames, path)
+		return nil
+	}); err != nil {
+		return nil, err
 	}
-	sqls, err := migu.Diff(db, file, src)
+	return filenames, nil
+}
+
+func (s *sync) run(db *sql.DB, filenames []string) error {
+	var src io.Reader
+	switch len(filenames) {
+	case 1:
+		switch filenames[0] {
+		case "", "-":
+			filenames = []string{""}
+			src = os.Stdin
+		}
+	}
+	sqls, err := migu.Diff(db, filenames, src)
 	if err != nil {
 		return err
 	}
