@@ -701,5 +701,5 @@ func (schema *columnSchema) hasUniqueKey() bool {
 }
 
 func (schema *columnSchema) hasSize() bool {
-	return schema.DataType == "varchar" && schema.CharacterMaximumLength != nil && *schema.CharacterMaximumLength != uint64(255)
+	return (schema.DataType == "varchar" || schema.DataType == "text") && schema.CharacterMaximumLength != nil && *schema.CharacterMaximumLength != uint64(255)
 }
