@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"io"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +17,8 @@ import (
 	"github.com/naoina/go-stringutil"
 	"github.com/naoina/migu/dialect"
 )
+
+var unescapeRegexp *regexp.Regexp = regexp.MustCompile(`\\`)
 
 // Sync synchronizes the schema between Go's struct and the database.
 // Go's struct may be provided via the filename of the source file, or via
@@ -601,9 +604,10 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 		}
 	}
 	if schema.ColumnComment != "" {
+		c := unescapeRegexp.ReplaceAllLiteralString(schema.ColumnComment, `\\`)
 		field.Comment = &ast.CommentGroup{
 			List: []*ast.Comment{
-				{Text: " // " + schema.ColumnComment},
+				{Text: c},
 			},
 		}
 	}
