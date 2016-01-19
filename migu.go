@@ -195,6 +195,7 @@ const (
 	tagUnique        = "unique"
 	tagSize          = "size"
 	tagIgnore        = "-"
+	tagType          = "type"
 )
 
 func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
@@ -544,6 +545,8 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 				return err
 			}
 			f.Size = size
+		case tagType:
+			f.Type = optval[1]
 		default:
 			return fmt.Errorf("unknown option: `%s'", opt)
 		}
