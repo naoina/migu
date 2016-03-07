@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hatajoe/migu/dialect"
 	"github.com/naoina/go-stringutil"
-	"github.com/naoina/migu/dialect"
 )
 
 var unescapeRegexp *regexp.Regexp = regexp.MustCompile(`\\`)
