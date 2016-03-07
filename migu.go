@@ -436,7 +436,11 @@ func alterTableSQLs(d dialect.Dialect, tableName string, table map[string]*colum
 	if err != nil {
 		return nil, nil, err
 	}
-	oldF, err := newField(f.Type, oldFieldAST)
+	t, err := detectTypeName(oldFieldAST)
+	if err != nil {
+		return nil, nil, err
+	}
+	oldF, err := newField(t, oldFieldAST)
 	if err != nil {
 		return nil, nil, err
 	}
