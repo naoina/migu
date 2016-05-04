@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hatajoe/migu"
+	"regexp"
 )
 
 var (
@@ -76,8 +77,12 @@ func (s *sync) Execute(args []string) error {
 
 func walk(root string) ([]string, error) {
 	filenames := []string{}
+	reg := regexp.MustCompile(`\.go$`)
 	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
+			return nil
+		}
+		if reg.MatchString(path) == false {
 			return nil
 		}
 		filenames = append(filenames, path)
