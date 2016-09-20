@@ -51,9 +51,9 @@ func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ st
 	case "*uint64":
 		return "BIGINT UNSIGNED", true
 	case "float32", "float64":
-		return "DOUBLE", false
+		return "FLOAT", false
 	case "sql.NullFloat64", "*float32", "*float64":
-		return "DOUBLE", true
+		return "FLOAT", true
 	case "time.Time":
 		return "DATETIME", false
 	case "*time.Time":
