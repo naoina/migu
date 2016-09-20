@@ -72,6 +72,18 @@ func Diff(db *sql.DB, filenames []string, src interface{}) ([]string, error) {
 			for _, ident := range fld.Names {
 				field := *f
 				field.Name = ident.Name
+				// indexが貼られているカラムの場合はfield.UniquをTrueにする
+				// 複合Indexの場合は１番目のカラムのみTrueにする
+				if _, ok := is[name]; ok {
+					for _, v := range is[name] {
+						for _, c := range v.columns {
+							if stringutil.ToUpperCamelCase(c) == field.Name {
+								field.Unique = true
+							}
+							break
+						}
+					}
+				}
 				structMap[name] = append(structMap[name], &field)
 			}
 		}
