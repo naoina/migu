@@ -115,7 +115,11 @@ func database(host, user, password, dbname string) (db *sql.DB, err error) {
 	if password != "" {
 		if password == "\x00" {
 			fmt.Printf("Enter password: ")
-			password = string(gopass.GetPasswd())
+			p, err := gopass.GetPasswd()
+			if err != nil {
+				return nil, err
+			}
+			password = string(p)
 		}
 		dsn = append(append(dsn, ':'), password...)
 	}
