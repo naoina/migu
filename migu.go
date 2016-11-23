@@ -28,8 +28,8 @@ import (
 // All query for synchronization will be performed within the transaction if
 // storage engine supports the transaction. (e.g. MySQL's MyISAM engine does
 // NOT support the transaction)
-func Sync(db *sql.DB, filename string, src interface{}) error {
-	sqls, err := Diff(db, filename, src)
+func Sync(db *sql.DB, filenames []string, src interface{}) error {
+	sqls, err := Diff(db, filenames, src)
 	if err != nil {
 		return err
 	}
@@ -47,8 +47,8 @@ func Sync(db *sql.DB, filename string, src interface{}) error {
 }
 
 // Diff returns SQLs for schema synchronous between database and Go's struct.
-func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
-	structASTMap, err := makeStructASTMap(filename, src)
+func Diff(db *sql.DB, filenames []string, src interface{}) ([]string, error) {
+	structASTMap, err := makeStructASTMap(filenames, src)
 	if err != nil {
 		return nil, err
 	}
@@ -321,26 +321,57 @@ func fprintln(output io.Writer, decl ast.Decl) error {
 	return nil
 }
 
-func makeStructASTMap(filename string, src interface{}) (map[string]*ast.StructType, error) {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
-	if err != nil {
-		return nil, err
-	}
-	ast.FileExports(f)
+func makeStructASTMap(filenames []string, src interface{}) (map[string]*ast.StructType, error) {
 	structASTMap := map[string]*ast.StructType{}
-	ast.Inspect(f, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.TypeSpec:
-			if t, ok := x.Type.(*ast.StructType); ok {
-				structASTMap[x.Name.Name] = t
+	for _, filename := range filenames {
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
+		if err != nil {
+			return nil, err
+		}
+		ast.FileExports(f)
+		ast.Inspect(f, func(n ast.Node) bool {
+			g, ok := n.(*ast.GenDecl)
+			if !ok || g.Tok != token.TYPE {
+				return true
 			}
-			return false
-		default:
+			if !isMarked(findComments(g.Doc), `+migu`) {
+				return true
+			}
+			for _, spec := range g.Specs {
+				t := spec.(*ast.TypeSpec)
+				s, ok := t.Type.(*ast.StructType)
+				if !ok {
+					continue
+				}
+				structASTMap[t.Name.Name] = s
+				return false
+			}
+			return true
+		})
+	}
+	return structASTMap, nil
+}
+
+func findComments(cs *ast.CommentGroup) []string {
+	result := []string{}
+	if cs == nil {
+		return result
+	}
+	for _, c := range cs.List {
+		t := strings.TrimSpace(strings.TrimLeft(c.Text, "//"))
+		result = append(result, t)
+	}
+	return result
+}
+
+func isMarked(comments []string, mark string) bool {
+	for _, c := range comments {
+		if strings.HasPrefix(c, mark) {
 			return true
 		}
-	})
-	return structASTMap, nil
+	}
+	return false
 }
 
 func detectTypeName(n ast.Node) (string, error) {
