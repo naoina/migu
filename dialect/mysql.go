@@ -51,9 +51,9 @@ func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ st
 	case "*uint64":
 		return "BIGINT UNSIGNED", true
 	case "float32", "float64":
-		return "DOUBLE", false
+		return "FLOAT", false
 	case "sql.NullFloat64", "*float32", "*float64":
-		return "DOUBLE", true
+		return "FLOAT", true
 	case "time.Time":
 		return "DATETIME", false
 	case "*time.Time":
@@ -82,7 +82,7 @@ func (d *MySQL) varchar(size uint64) string {
 	switch {
 	case size < 21846:
 		return fmt.Sprintf("VARCHAR(%d)", size)
-	case size < (1<<16)-1-2: // approximate 64KB.
+	case size < (1 << 16): // approximate 64KB.
 		// 65533 ((2^16) - 1) - (length of prefix)
 		// See http://dev.mysql.com/doc/refman/5.5/en/string-type-overview.html#idm140418628949072
 		return "TEXT"

@@ -9,13 +9,16 @@ import (
 	"go/token"
 	"io"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/hatajoe/migu/dialect"
 	"github.com/naoina/go-stringutil"
-	"github.com/naoina/migu/dialect"
 )
+
+var unescapeRegexp *regexp.Regexp = regexp.MustCompile(`\\`)
 
 // Sync synchronizes the schema between Go's struct and the database.
 // Go's struct may be provided via the filename of the source file, or via
@@ -28,8 +31,8 @@ import (
 // All query for synchronization will be performed within the transaction if
 // storage engine supports the transaction. (e.g. MySQL's MyISAM engine does
 // NOT support the transaction)
-func Sync(db *sql.DB, filename string, src interface{}) error {
-	sqls, err := Diff(db, filename, src)
+func Sync(db *sql.DB, filenames []string, src interface{}) error {
+	sqls, err := Diff(db, filenames, src)
 	if err != nil {
 		return err
 	}
@@ -47,8 +50,8 @@ func Sync(db *sql.DB, filename string, src interface{}) error {
 }
 
 // Diff returns SQLs for schema synchronous between database and Go's struct.
-func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
-	structASTMap, err := makeStructASTMap(filename, src)
+func Diff(db *sql.DB, filenames []string, src interface{}) ([]string, error) {
+	structASTMap, is, err := makeStructASTMap(filenames, src)
 	if err != nil {
 		return nil, err
 	}
@@ -69,6 +72,18 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			for _, ident := range fld.Names {
 				field := *f
 				field.Name = ident.Name
+				// indexが貼られているカラムの場合はfield.UniquをTrueにする
+				// 複合Indexの場合は１番目のカラムのみTrueにする
+				if _, ok := is[name]; ok {
+					for _, v := range is[name] {
+						for _, c := range v.columns {
+							if stringutil.ToUpperCamelCase(c) == field.Name {
+								field.Unique = true
+							}
+							break
+						}
+					}
+				}
 				structMap[name] = append(structMap[name], &field)
 			}
 		}
@@ -87,6 +102,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 	for _, name := range names {
 		model := structMap[name]
 		columns, ok := tableMap[name]
+		idxs := is[name]
 		tableName := stringutil.ToSnakeCase(name)
 		if !ok {
 			columns := make([]string, len(model))
@@ -96,6 +112,10 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			migrations = append(migrations, fmt.Sprintf(`CREATE TABLE %s (
   %s
 )`, d.Quote(tableName), strings.Join(columns, ",\n  ")))
+			// CREATE INDICES
+			for _, i := range idxs {
+				migrations = append(migrations, i.ToAlterSQL(d.Quote(tableName)))
+			}
 		} else {
 			table := map[string]*columnSchema{}
 			for _, column := range columns {
@@ -112,6 +132,9 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 				dropSQLs = append(dropSQLs, d...)
 				delete(table, f.Name)
 			}
+			mod, drop := alterIndexSQLs(tableName, columns, idxs)
+			dropSQLs = append(dropSQLs, drop...)
+			modifySQLs = append(modifySQLs, mod...)
 			migrations = append(migrations, append(dropSQLs, modifySQLs...)...)
 			for _, f := range table {
 				migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s DROP %s`, d.Quote(tableName), d.Quote(stringutil.ToSnakeCase(f.ColumnName))))
@@ -192,6 +215,7 @@ const (
 	tagUnique        = "unique"
 	tagSize          = "size"
 	tagIgnore        = "-"
+	tagType          = "type"
 )
 
 func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
@@ -321,26 +345,105 @@ func fprintln(output io.Writer, decl ast.Decl) error {
 	return nil
 }
 
-func makeStructASTMap(filename string, src interface{}) (map[string]*ast.StructType, error) {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
-	if err != nil {
-		return nil, err
+type index struct {
+	name    string
+	columns []string
+}
+
+func newIndex(comment string) *index {
+	is := strings.Split(comment, ":")
+	if is[0] != "index" {
+		return nil
 	}
-	ast.FileExports(f)
-	structASTMap := map[string]*ast.StructType{}
-	ast.Inspect(f, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.TypeSpec:
-			if t, ok := x.Type.(*ast.StructType); ok {
-				structASTMap[x.Name.Name] = t
-			}
-			return false
-		default:
+	columns := strings.Split(is[1], ",")
+	return &index{
+		name:    fmt.Sprintf("index_%s", strings.Join(columns, "_")),
+		columns: columns,
+	}
+}
+
+func (m *index) ToAlterSQL(table string) string {
+	return fmt.Sprintf("ALTER TABLE %s ADD INDEX %s (%s)", table, m.name, strings.Join(m.columns, ","))
+}
+
+type indices []*index
+
+func newIndices(comment string) indices {
+	is := indices{}
+	tokens := strings.Split(comment, " ")
+	for _, t := range tokens {
+		i := newIndex(t)
+		if i != nil {
+			is = append(is, i)
+		}
+	}
+	return is
+}
+
+func (m indices) contains(name string) bool {
+	for _, v := range m {
+		if v.name == name {
 			return true
 		}
-	})
-	return structASTMap, nil
+	}
+	return false
+}
+
+func makeStructASTMap(filenames []string, src interface{}) (map[string]*ast.StructType, map[string]indices, error) {
+	structASTMap := map[string]*ast.StructType{}
+	is := map[string]indices{}
+	for _, filename := range filenames {
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
+		if err != nil {
+			return nil, nil, err
+		}
+		ast.FileExports(f)
+		ast.Inspect(f, func(n ast.Node) bool {
+			g, ok := n.(*ast.GenDecl)
+			if !ok || g.Tok != token.TYPE {
+				return true
+			}
+			comments := findComments(g.Doc)
+			idx, ok := isMarked(comments, `+migu`)
+			if !ok {
+				return true
+			}
+			for _, spec := range g.Specs {
+				t := spec.(*ast.TypeSpec)
+				s, ok := t.Type.(*ast.StructType)
+				if !ok {
+					continue
+				}
+				structASTMap[t.Name.Name] = s
+				is[t.Name.Name] = newIndices(comments[idx])
+				return false
+			}
+			return true
+		})
+	}
+	return structASTMap, is, nil
+}
+
+func findComments(cs *ast.CommentGroup) []string {
+	result := []string{}
+	if cs == nil {
+		return result
+	}
+	for _, c := range cs.List {
+		t := strings.TrimSpace(strings.TrimLeft(c.Text, "//"))
+		result = append(result, t)
+	}
+	return result
+}
+
+func isMarked(comments []string, mark string) (int, bool) {
+	for i, c := range comments {
+		if strings.HasPrefix(c, mark) {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 func detectTypeName(n ast.Node) (string, error) {
@@ -397,20 +500,20 @@ func alterTableSQLs(d dialect.Dialect, tableName string, table map[string]*colum
 			fmt.Sprintf(`ALTER TABLE %s ADD %s`, d.Quote(tableName), columnSQL(d, f)),
 		}, nil, nil
 	}
-	types, err := column.GoFieldTypes()
-	if err != nil {
-		return nil, nil, err
-	}
 	oldFieldAST, err := column.fieldAST()
 	if err != nil {
 		return nil, nil, err
 	}
-	oldF, err := newField(f.Type, oldFieldAST)
+	t, err := detectTypeName(oldFieldAST)
+	if err != nil {
+		return nil, nil, err
+	}
+	oldF, err := newField(t, oldFieldAST)
 	if err != nil {
 		return nil, nil, err
 	}
 	oldF.Name = f.Name
-	if !inStrings(types, f.Type) || !reflect.DeepEqual(oldF, f) {
+	if !reflect.DeepEqual(oldF, f) {
 		tableName = d.Quote(tableName)
 		colSQL := columnSQL(d, f)
 		modifySQLs = append(modifySQLs, fmt.Sprintf(`ALTER TABLE %s MODIFY %s`, tableName, colSQL))
@@ -425,8 +528,6 @@ func alterTableSQLs(d dialect.Dialect, tableName string, table map[string]*colum
 		if oldF.Unique != f.Unique && !f.Unique {
 			if column.hasPrimaryKey() {
 				drop = append(drop, `DROP PRIMARY KEY`)
-			} else {
-				drop = append(drop, `DROP INDEX `+column.IndexName)
 			}
 		}
 		if len(drop) > 0 {
@@ -434,6 +535,29 @@ func alterTableSQLs(d dialect.Dialect, tableName string, table map[string]*colum
 		}
 	}
 	return modifySQLs, dropSQLs, nil
+}
+
+func alterIndexSQLs(tableName string, columns []*columnSchema, is indices) (modifySQLs, dropSQLs []string) {
+	existenceIndices := map[string]bool{}
+	for _, c := range columns {
+		if c.NonUnique == 0 {
+			continue
+		}
+		existenceIndices[c.IndexName] = true
+	}
+	for _, i := range is {
+		if _, ok := existenceIndices[i.name]; ok {
+			continue
+		}
+		modifySQLs = append(modifySQLs, i.ToAlterSQL(tableName))
+	}
+	for key := range existenceIndices {
+		if is.contains(key) {
+			continue
+		}
+		dropSQLs = append(dropSQLs, fmt.Sprintf("ALTER TABLE %s DROP INDEX %s", tableName, key))
+	}
+	return modifySQLs, dropSQLs
 }
 
 func hasDatetimeColumn(t map[string][]*columnSchema) bool {
@@ -514,6 +638,8 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 				return err
 			}
 			f.Size = size
+		case tagType:
+			f.Type = optval[1]
 		default:
 			return fmt.Errorf("unknown option: `%s'", opt)
 		}
@@ -574,9 +700,10 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 		}
 	}
 	if schema.ColumnComment != "" {
+		c := unescapeRegexp.ReplaceAllLiteralString(schema.ColumnComment, `\\`)
 		field.Comment = &ast.CommentGroup{
 			List: []*ast.Comment{
-				{Text: " // " + schema.ColumnComment},
+				{Text: c},
 			},
 		}
 	}
@@ -639,11 +766,11 @@ func (schema *columnSchema) GoFieldTypes() ([]string, error) {
 			return []string{"*time.Time"}, nil
 		}
 		return []string{"time.Time"}, nil
-	case "double":
+	case "double", "float":
 		if schema.isNullable() {
-			return []string{"*float32", "*float64", "sql.NullFloat64"}, nil
+			return []string{"*float64", "sql.NullFloat64"}, nil
 		}
-		return []string{"float32", "float64"}, nil
+		return []string{"float64"}, nil
 	default:
 		return nil, fmt.Errorf("BUG: unexpected data type: %s", schema.DataType)
 	}
@@ -670,5 +797,5 @@ func (schema *columnSchema) hasUniqueKey() bool {
 }
 
 func (schema *columnSchema) hasSize() bool {
-	return schema.DataType == "varchar" && schema.CharacterMaximumLength != nil && *schema.CharacterMaximumLength != uint64(255)
+	return (schema.DataType == "varchar" || schema.DataType == "text") && schema.CharacterMaximumLength != nil && *schema.CharacterMaximumLength != uint64(255)
 }
