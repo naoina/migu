@@ -3,8 +3,8 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,7 +23,7 @@ type sync struct {
 }
 
 func (s *sync) Usage() string {
-	return fmt.Sprintf(`Usage: %s sync [OPTIONS] DATABASE [FILE]
+	return fmt.Sprintf(`Usage: %s sync [OPTIONS] DATABASE [FILE|DIRECTORY]
 
 Options:
       --dry-run          Print the results with no changes
@@ -62,15 +62,45 @@ func (s *sync) Execute(args []string) error {
 }
 
 func (s *sync) run(db *sql.DB, file string) error {
-	var src io.Reader
+	var sqls []string
+	var err error
 	switch file {
 	case "", "-":
-		file = ""
-		src = os.Stdin
-	}
-	sqls, err := migu.Diff(db, file, src)
-	if err != nil {
-		return err
+		if sqls, err = migu.Diff(db, "", os.Stdin); err != nil {
+			return err
+		}
+	default:
+		info, err := os.Stat(file)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			sqls, err = migu.Diff(db, file, nil)
+			break
+		}
+		if err := filepath.Walk(file, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			switch info.Name()[0] {
+			case '.', '_':
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if info.IsDir() {
+				return nil
+			}
+			results, err := migu.Diff(db, path, nil)
+			if err != nil {
+				return err
+			}
+			sqls = append(sqls, results...)
+			return nil
+		}); err != nil {
+			return err
+		}
 	}
 	var tx *sql.Tx
 	if !s.DryRun {
