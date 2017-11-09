@@ -206,7 +206,7 @@ CREATE TABLE user (
 
 CREATE TABLE post (
   title   VARCHAR(255),
-  content VARCHAR(65533)
+  content VARCHAR(255)
 )`}, `type Post struct {
 	Title   *string
 	Content *string
