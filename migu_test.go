@@ -176,6 +176,30 @@ func TestDiffWithColumn(t *testing.T) {
 	}
 }
 
+func TestDiffWithExtraField(t *testing.T) {
+	before(t)
+	src := fmt.Sprintf("package migu_test\n" +
+		"type User struct {\n" +
+		"	a int\n" +
+		"	_ int `migu:\"column:extra\"`\n" +
+		"	_ int `migu:\"column:another_extra\"`\n" +
+		"	_ int `migu:\"default:yes\"`\n" +
+		"}")
+	actual, err := migu.Diff(db, "", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expect := []string{
+		fmt.Sprintf("CREATE TABLE `user` (\n" +
+			"  `extra` INT NOT NULL,\n" +
+			"  `another_extra` INT NOT NULL\n" +
+			")"),
+	}
+	if !reflect.DeepEqual(actual, expect) {
+		t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+	}
+}
+
 func TestFprint(t *testing.T) {
 	for _, v := range []struct {
 		sqls   []string

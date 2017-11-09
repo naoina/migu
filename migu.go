@@ -67,6 +67,9 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 				continue
 			}
 			for _, ident := range fld.Names {
+				if !(ident.IsExported() || (ident.Name == "_" && f.Column != "")) {
+					continue
+				}
 				field := *f
 				field.Name = ident.Name
 				if field.Column == "" {
@@ -332,7 +335,6 @@ func makeStructASTMap(filename string, src interface{}) (map[string]*ast.StructT
 	if err != nil {
 		return nil, err
 	}
-	ast.FileExports(f)
 	structASTMap := map[string]*ast.StructType{}
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch x := n.(type) {

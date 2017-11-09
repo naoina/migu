@@ -130,6 +130,88 @@ To specify multiple struct field tags to a single column, join tags with commas.
 Email string `migu:"unique,size:512"`
 ```
 
+## Define extra columns that is not related to struct fields
+
+If you want to define extra columns for the database table that is not related to struct fields, you can use `_` field and `column` struct tag.
+
+```go
+package model
+
+import "time"
+
+type User struct {
+	Name string
+
+	_ time.Time `migu:"column:created_at"`
+	_ time.Time `migu:"column:updated_at"`
+}
+```
+
+This feature can be used for workaround that Migu cannot collect the columns information from fields of embedded fields.
+For example, `Timestamp` struct is embedded to `User` struct.
+
+```go
+package model
+
+import "time"
+
+type Timestamp struct {
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type User struct {
+	Name string
+
+	Timestamp
+}
+```
+
+```bash
+migu sync -u root --dry-run migu_test
+```
+
+```
+--------dry-run applying--------
+  CREATE TABLE `user` (
+    `name` VARCHAR(255) NOT NULL
+  )
+--------dry-run done 0.000s--------
+```
+
+`Timestamp` embedded field does not appear in DDL. The reason for this restriction is that Migu uses Go AST to collect the struct information.
+A way to avoid this restriction, you can add definition of some columns of `Timestamp` to `_` fields in `User` struct.
+
+```go
+package model
+
+import "time"
+
+type Timestamp struct {
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type User struct {
+	Name string
+
+	Timestamp
+
+	_ time.Time `migu:"column:created_at"`
+	_ time.Time `migu:"column:updated_at"`
+}
+```
+
+```
+--------dry-run applying--------
+  CREATE TABLE `user` (
+    `name` VARCHAR(255) NOT NULL,
+    `created_at` DATETIME NOT NULL,
+    `updated_at` DATETIME NOT NULL
+  )
+--------dry-run done 0.000s--------
+```
+
 ## Supported database
 
 * MariaDB/MySQL
