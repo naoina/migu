@@ -9,55 +9,43 @@ type MySQL struct {
 }
 
 func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ string, null bool) {
+	if name[0] == '*' {
+		null = true
+		name = name[1:]
+	}
 	switch name {
 	case "string":
-		return d.varchar(size), false
-	case "sql.NullString", "*string":
+		return d.varchar(size), null
+	case "sql.NullString":
 		return d.varchar(size), true
 	case "int", "int32":
-		return "INT", false
-	case "*int", "*int32":
-		return "INT", true
+		return "INT", null
 	case "int8":
-		return "TINYINT", false
-	case "*int8":
-		return "TINYINT", true
+		return "TINYINT", null
 	case "bool":
-		return "TINYINT", false
-	case "*bool", "sql.NullBool":
+		return "TINYINT", null
+	case "sql.NullBool":
 		return "TINYINT", true
 	case "int16":
-		return "SMALLINT", false
-	case "*int16":
-		return "SMALLINT", true
+		return "SMALLINT", null
 	case "int64":
-		return "BIGINT", false
-	case "sql.NullInt64", "*int64":
+		return "BIGINT", null
+	case "sql.NullInt64":
 		return "BIGINT", true
 	case "uint", "uint32":
-		return "INT UNSIGNED", false
-	case "*uint", "*uint32":
-		return "INT UNSIGNED", true
+		return "INT UNSIGNED", null
 	case "uint8":
-		return "TINYINT UNSIGNED", false
-	case "*uint8":
-		return "TINYINT UNSIGNED", true
+		return "TINYINT UNSIGNED", null
 	case "uint16":
-		return "SMALLINT UNSIGNED", false
-	case "*uint16":
-		return "SMALLINT UNSIGNED", true
+		return "SMALLINT UNSIGNED", null
 	case "uint64":
-		return "BIGINT UNSIGNED", false
-	case "*uint64":
-		return "BIGINT UNSIGNED", true
+		return "BIGINT UNSIGNED", null
 	case "float32", "float64":
-		return "DOUBLE", false
-	case "sql.NullFloat64", "*float32", "*float64":
+		return "DOUBLE", null
+	case "sql.NullFloat64":
 		return "DOUBLE", true
 	case "time.Time":
-		return "DATETIME", false
-	case "*time.Time":
-		return "DATETIME", true
+		return "DATETIME", null
 	default:
 		return "VARCHAR(255)", true
 	}
