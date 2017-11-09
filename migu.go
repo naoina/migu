@@ -69,6 +69,9 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			for _, ident := range fld.Names {
 				field := *f
 				field.Name = ident.Name
+				if field.Column == "" {
+					field.Column = stringutil.ToSnakeCase(field.Name)
+				}
 				structMap[name] = append(structMap[name], &field)
 			}
 		}
@@ -99,7 +102,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		} else {
 			table := map[string]*columnSchema{}
 			for _, column := range columns {
-				table[stringutil.ToUpperCamelCase(column.ColumnName)] = column
+				table[column.ColumnName] = column
 			}
 			var modifySQLs []string
 			var dropSQLs []string
@@ -110,11 +113,11 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 				}
 				modifySQLs = append(modifySQLs, m...)
 				dropSQLs = append(dropSQLs, d...)
-				delete(table, f.Name)
+				delete(table, f.Column)
 			}
 			migrations = append(migrations, append(dropSQLs, modifySQLs...)...)
 			for _, f := range table {
-				migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s DROP %s`, d.Quote(tableName), d.Quote(stringutil.ToSnakeCase(f.ColumnName))))
+				migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s DROP %s`, d.Quote(tableName), d.Quote(f.ColumnName)))
 			}
 		}
 		delete(structMap, name)
@@ -129,6 +132,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 type field struct {
 	Name          string
 	Type          string
+	Column        string
 	Comment       string
 	Unique        bool
 	PrimaryKey    bool
@@ -191,6 +195,7 @@ const (
 	tagAutoIncrement = "autoincrement"
 	tagUnique        = "unique"
 	tagSize          = "size"
+	tagColumn        = "column"
 	tagIgnore        = "-"
 )
 
@@ -368,7 +373,7 @@ func detectTypeName(n ast.Node) (string, error) {
 
 func columnSQL(d dialect.Dialect, f *field) string {
 	colType, null := d.ColumnType(f.Type, f.Size, f.AutoIncrement)
-	column := []string{d.Quote(stringutil.ToSnakeCase(f.Name)), colType}
+	column := []string{d.Quote(f.Column), colType}
 	if !null {
 		column = append(column, "NOT NULL")
 	}
@@ -391,7 +396,7 @@ func columnSQL(d dialect.Dialect, f *field) string {
 }
 
 func alterTableSQLs(d dialect.Dialect, tableName string, table map[string]*columnSchema, f *field) (modifySQLs, dropSQLs []string, err error) {
-	column, exists := table[f.Name]
+	column, exists := table[f.Column]
 	if !exists {
 		return []string{
 			fmt.Sprintf(`ALTER TABLE %s ADD %s`, d.Quote(tableName), columnSQL(d, f)),
@@ -410,6 +415,7 @@ func alterTableSQLs(d dialect.Dialect, tableName string, table map[string]*colum
 		return nil, nil, err
 	}
 	oldF.Name = f.Name
+	oldF.Column = f.Column
 	if !inStrings(types, f.Type) || !reflect.DeepEqual(oldF, f) {
 		tableName = d.Quote(tableName)
 		colSQL := columnSQL(d, f)
@@ -505,6 +511,11 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 			f.Unique = true
 		case tagIgnore:
 			f.Ignore = true
+		case tagColumn:
+			if len(optval) < 2 {
+				return fmt.Errorf("`column` tag must specify the parameter")
+			}
+			f.Column = optval[1]
 		case tagSize:
 			if len(optval) < 2 {
 				return fmt.Errorf("`size' tag must specify the parameter")

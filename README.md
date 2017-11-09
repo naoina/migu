@@ -107,6 +107,14 @@ Active string `migu:"default:yes"`
 Body string `migu:"size:512"` // VARCHAR(512)
 ```
 
+#### COLUMN
+
+Specify the column name on the database.
+
+```go
+Body string `migu:"column:content"`
+```
+
 #### IGNORE
 
 ```go
