@@ -1,18 +1,18 @@
 # Migu [![Build Status](https://travis-ci.org/naoina/migu.svg?branch=master)](https://travis-ci.org/naoina/migu)
 
-Database schema migration tool for [Go](http://golang.org).
+Migu is an idempotent database schema migration tool for [Go](http://golang.org).
 
-Migu has idempotence like Chef or Puppet.
-
-This tool is inspired by [Ridgepole](https://github.com/winebarrel/ridgepole).
+Migu is inspired by [Ridgepole](https://github.com/winebarrel/ridgepole).
 
 ## Installation
 
-    go get -u github.com/naoina/migu/cmd/migu
+```bash
+go get -u github.com/naoina/migu/cmd/migu
+```
 
 ## Basic usage
 
-Save the following Go code as `schema.go`:
+First, you write Go code to `schema.go` like below.
 
 ```go
 package yourownpackagename
@@ -23,7 +23,7 @@ type User struct {
 }
 ```
 
-Then type the following commands to execute the first migration:
+You enter the following commands to execute the first migration.
 
 ```
 % mysqladmin -u root create migu_test
@@ -37,9 +37,9 @@ Then type the following commands to execute the first migration:
 +-------+--------------+------+-----+---------+-------+
 ```
 
-`migu sync` command will create the table `user` into database `migu_test` because it still not exist.
+If `user` table does not exist on the database, `migu sync` command will create `user` table into the database.
 
-Next, modify and save `schema.go` as follows:
+Second, You modify `schema.go` as follows.
 
 ```go
 package yourownpackagename
@@ -50,7 +50,7 @@ type User struct {
 }
 ```
 
-Then type the following commands again:
+Then, run `migu sync` command again.
 
 ```
 % migu -u root sync migu_test schema.go
@@ -63,13 +63,14 @@ Then type the following commands again:
 +-------+------------------+------+-----+---------+-------+
 ```
 
-A type of field `age` on `user` table has been changed because type of `Age` in `schema.go` was changed from `int` to `uint`.
+If a type of field of `User` struct is changed, `migu sync` command will change a type of `age` field on the database.
+In above case, a type of `Age` field of `User` struct was changed from `int` to `uint`, so a type of `age` field of `user` table on the database has been changed from `int` to `int unsigned` by `migu sync` command.
 
 See `migu --help` for more options.
 
-## Detailed definition of the column by struct field's tag
+## Detailed definition of the column by the struct field tag
 
-You can specify the detailed definition of the column by some struct field's tags.
+You can specify the detailed definition of the column by some struct field tags.
 
 #### PRIMARY KEY
 
@@ -83,7 +84,7 @@ ID int64 `migu:"pk"`
 ID int64 `migu:"autoincrement"`
 ```
 
-#### UNIQUE
+#### UNIQUE INDEX
 
 ```go
 Email string `migu:"unique"`
@@ -95,7 +96,7 @@ Email string `migu:"unique"`
 Active bool `migu:"default:true"`
 ```
 
-If the field type is string, the value doesn't need to be quoted because the value type will be guess by Migu.
+If a field type is string, Migu surrounds a string value by dialect-specific quotes.
 
 ```go
 Active string `migu:"default:yes"`
@@ -109,7 +110,7 @@ Body string `migu:"size:512"` // VARCHAR(512)
 
 #### COLUMN
 
-Specify the column name on the database.
+You can specify the column name on the database.
 
 ```go
 Body string `migu:"column:content"`
@@ -118,12 +119,12 @@ Body string `migu:"column:content"`
 #### IGNORE
 
 ```go
-Body string `migu:"-"` // Ignore during migration
+Body string `migu:"-"` // This field does not affect the migration.
 ```
 
-### Specify the multiple struct field's tags
+### Specify the multiple struct field tags
 
-To specify the multiple struct field's tags to the single column, join with commas.
+To specify multiple struct field tags to a single column, join tags with commas.
 
 ```go
 Email string `migu:"unique,size:512"`
@@ -131,7 +132,7 @@ Email string `migu:"unique,size:512"`
 
 ## Supported database
 
-* MySQL
+* MariaDB/MySQL
 
 ## TODO
 
