@@ -17,6 +17,11 @@ import (
 	"github.com/naoina/migu/dialect"
 )
 
+const (
+	commentPrefix = "//"
+	marker        = "+migu"
+)
+
 // Sync synchronizes the schema between Go's struct and the database.
 // Go's struct may be provided via the filename of the source file, or via
 // the src parameter.
@@ -322,6 +327,7 @@ func formatDefault(d dialect.Dialect, t, def string) string {
 }
 
 func fprintln(output io.Writer, decl ast.Decl) error {
+	fmt.Fprintln(output, commentPrefix+marker)
 	if err := format.Node(output, token.NewFileSet(), decl); err != nil {
 		return err
 	}
@@ -336,18 +342,37 @@ func makeStructASTMap(filename string, src interface{}) (map[string]*ast.StructT
 		return nil, err
 	}
 	structASTMap := map[string]*ast.StructType{}
-	ast.Inspect(f, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.TypeSpec:
-			if t, ok := x.Type.(*ast.StructType); ok {
-				structASTMap[x.Name.Name] = t
+	for _, decl := range f.Decls {
+		d, ok := decl.(*ast.GenDecl)
+		if !ok || d.Tok != token.TYPE {
+			continue
+		}
+		if !hasAnnotation(d.Doc) {
+			continue
+		}
+		for _, spec := range d.Specs {
+			s, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
 			}
-			return false
-		default:
+			if t, ok := s.Type.(*ast.StructType); ok {
+				structASTMap[s.Name.Name] = t
+			}
+		}
+	}
+	return structASTMap, nil
+}
+
+func hasAnnotation(g *ast.CommentGroup) bool {
+	if g == nil {
+		return false
+	}
+	for _, c := range g.List {
+		if strings.HasPrefix(c.Text, commentPrefix) && strings.TrimSpace(c.Text[len(commentPrefix):]) == marker {
 			return true
 		}
-	})
-	return structASTMap, nil
+	}
+	return false
 }
 
 func detectTypeName(n ast.Node) (string, error) {

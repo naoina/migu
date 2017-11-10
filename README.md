@@ -17,13 +17,16 @@ First, you write Go code to `schema.go` like below.
 ```go
 package yourownpackagename
 
+//+migu
 type User struct {
 	Name string
 	Age  int
 }
 ```
 
-You enter the following commands to execute the first migration.
+Migu uses Go structs for migration that has annotation tag of `+migu` in struct comments.
+
+Second, you enter the following commands to execute the first migration.
 
 ```
 % mysqladmin -u root create migu_test
@@ -39,11 +42,12 @@ You enter the following commands to execute the first migration.
 
 If `user` table does not exist on the database, `migu sync` command will create `user` table into the database.
 
-Second, You modify `schema.go` as follows.
+Finally, You modify `schema.go` as follows.
 
 ```go
 package yourownpackagename
 
+//+migu
 type User struct {
 	Name string
 	Age  uint
@@ -139,6 +143,7 @@ package model
 
 import "time"
 
+//+migu
 type User struct {
 	Name string
 
@@ -160,6 +165,7 @@ type Timestamp struct {
 	UpdatedAt time.Time
 }
 
+//+migu
 type User struct {
 	Name string
 
@@ -192,6 +198,7 @@ type Timestamp struct {
 	UpdatedAt time.Time
 }
 
+//+migu
 type User struct {
 	Name string
 

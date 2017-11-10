@@ -78,6 +78,7 @@ func TestDiffWithSrc(t *testing.T) {
 
 func testDiffWithSrc(t *testing.T, t1, s1, t2, s2 string) error {
 	src := fmt.Sprintf("package migu_test\n"+
+		"//+migu\n"+
 		"type User struct {\n"+
 		"	A %s\n"+
 		"}", t1)
@@ -112,6 +113,7 @@ func testDiffWithSrc(t *testing.T, t1, s1, t2, s2 string) error {
 	}
 
 	src = fmt.Sprintf("package migu_test\n"+
+		"//+migu\n"+
 		"type User struct {\n"+
 		"	A %s\n"+
 		"}", t2)
@@ -159,6 +161,7 @@ func testDiffWithSrc(t *testing.T, t1, s1, t2, s2 string) error {
 func TestDiffWithColumn(t *testing.T) {
 	before(t)
 	src := fmt.Sprintf("package migu_test\n" +
+		"//+migu\n" +
 		"type User struct {\n" +
 		"	ThisIsColumn string `migu:\"column:aColumn\"`" +
 		"}")
@@ -179,6 +182,7 @@ func TestDiffWithColumn(t *testing.T) {
 func TestDiffWithExtraField(t *testing.T) {
 	before(t)
 	src := fmt.Sprintf("package migu_test\n" +
+		"//+migu\n" +
 		"type User struct {\n" +
 		"	a int\n" +
 		"	_ int `migu:\"column:extra\"`\n" +
@@ -200,6 +204,96 @@ func TestDiffWithExtraField(t *testing.T) {
 	}
 }
 
+func TestDiffMarker(t *testing.T) {
+	before(t)
+	for _, v := range []struct {
+		comment string
+	}{
+		{"//+migu"},
+		{"// +migu"},
+		{"// +migu "},
+		{"//+migu\n//hoge"},
+		{"// +migu \n //hoge"},
+		{"//hoge\n//+migu"},
+		{"//hoge\n// +migu"},
+		{"//foo\n//+migu\n//bar"},
+	} {
+		v := v
+		t.Run(fmt.Sprintf("valid marker(%#v)", v.comment), func(t *testing.T) {
+			src := fmt.Sprintf("package migu_test\n" +
+				v.comment + "\n" +
+				"type User struct {\n" +
+				"	A int\n" +
+				"}")
+			actual, err := migu.Diff(db, "", src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expect := []string{
+				fmt.Sprintf("CREATE TABLE `user` (\n" +
+					"  `a` INT NOT NULL\n" +
+					")"),
+			}
+			if !reflect.DeepEqual(actual, expect) {
+				t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+			}
+		})
+	}
+
+	for _, v := range []struct {
+		comment string
+	}{
+		{"//migu"},
+		{"//+migu a"},
+		{"// +migu a"},
+		{"//a+migu"},
+		{"/*+migu*/"},
+		{"/* +migu*/"},
+		{"/* +migu */"},
+		{"/*\n+migu\n*/"},
+	} {
+		v := v
+		t.Run(fmt.Sprintf("invalid marker(%#v)", v.comment), func(t *testing.T) {
+			src := fmt.Sprintf("package migu_test\n" +
+				v.comment + "\n" +
+				"type User struct {\n" +
+				"	A int\n" +
+				"}")
+			actual, err := migu.Diff(db, "", src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expect := []string(nil)
+			if !reflect.DeepEqual(actual, expect) {
+				t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+			}
+		})
+	}
+
+	t.Run("multiple struct", func(t *testing.T) {
+		src := fmt.Sprintf("package migu_test\n" +
+			"type Timestamp struct {\n" +
+			"	T time.Time\n" +
+			"}\n" +
+			"//+migu\n" +
+			"type User struct {\n" +
+			"	A int\n" +
+			"}")
+		actual, err := migu.Diff(db, "", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expect := []string{
+			fmt.Sprintf("CREATE TABLE `user` (\n" +
+				"  `a` INT NOT NULL\n" +
+				")"),
+		}
+		if !reflect.DeepEqual(actual, expect) {
+			t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+		}
+	})
+}
+
 func TestFprint(t *testing.T) {
 	for _, v := range []struct {
 		sqls   []string
@@ -208,7 +302,8 @@ func TestFprint(t *testing.T) {
 		{[]string{`
 CREATE TABLE user (
   name VARCHAR(255)
-)`}, `type User struct {
+)`}, `//+migu
+type User struct {
 	Name *string
 }
 
@@ -217,7 +312,8 @@ CREATE TABLE user (
 CREATE TABLE user (
   name VARCHAR(255),
   age  INT
-)`}, `type User struct {
+)`}, `//+migu
+type User struct {
 	Name *string
 	Age  *int
 }
@@ -231,11 +327,13 @@ CREATE TABLE user (
 CREATE TABLE post (
   title   VARCHAR(255),
   content VARCHAR(255)
-)`}, `type Post struct {
+)`}, `//+migu
+type Post struct {
 	Title   *string
 	Content *string
 }
 
+//+migu
 type User struct {
 	Name *string
 }
