@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/naoina/migu"
@@ -110,7 +109,7 @@ func (s *sync) run(db *sql.DB, file string) error {
 	}
 	for _, sql := range sqls {
 		s.printf("--------%sapplying--------\n", dryRunMarker)
-		s.printf("  %s\n", strings.Replace(sql, "\n", "\n  ", -1))
+		s.printf("%s\n", sql)
 		start := time.Now()
 		if !s.DryRun {
 			if _, err := tx.Exec(sql); err != nil {
