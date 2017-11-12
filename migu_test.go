@@ -297,19 +297,24 @@ func TestDiffAnnotation(t *testing.T) {
 	for _, v := range []struct {
 		comment   string
 		tableName string
+		option    string
 	}{
-		{`//+migu table:guest`, "guest"},
-		{`//+migu table:"guest table"`, "guest table"},
-		{`//+migu table:GuestTable`, "GuestTable"},
-		{`//+migu table:guest\ntable`, `guest\ntable`},
-		{`//+migu table:"\"guest\""`, `"guest"`},
-		{`//+migu table:"hoge\"guest\""`, `hoge"guest"`},
-		{`//+migu table:"\"guest\"hoge"`, `"guest"hoge`},
-		{`//+migu table:"\"\"guest\""`, `""guest"`},
-		{`//+migu table:"\"\"guest\"\""`, `""guest""`},
-		{`//+migu table:"a\nb"`, "a\nb"},
-		{`//+migu table:a"`, `a"`},
-		{`//+migu table:a""`, `a""`},
+		{`//+migu table:guest`, "guest", ""},
+		{`//+migu table:"guest table"`, "guest table", ""},
+		{`//+migu table:GuestTable`, "GuestTable", ""},
+		{`//+migu table:guest\ntable`, `guest\ntable`, ""},
+		{`//+migu table:"\"guest\""`, `"guest"`, ""},
+		{`//+migu table:"hoge\"guest\""`, `hoge"guest"`, ""},
+		{`//+migu table:"\"guest\"hoge"`, `"guest"hoge`, ""},
+		{`//+migu table:"\"\"guest\""`, `""guest"`, ""},
+		{`//+migu table:"\"\"guest\"\""`, `""guest""`, ""},
+		{`//+migu table:"a\nb"`, "a\nb", ""},
+		{`//+migu table:a"`, `a"`, ""},
+		{`//+migu table:a""`, `a""`, ""},
+		{`//+migu option:ENGINE=InnoDB`, "user", " ENGINE=InnoDB"},
+		{`//+migu option:"ROW_FORMAT = DYNAMIC"`, "user", " ROW_FORMAT = DYNAMIC"},
+		{`//+migu table:"guest" option:"ROW_FORMAT = DYNAMIC"`, "guest", " ROW_FORMAT = DYNAMIC"},
+		{`//+migu option:"ROW_FORMAT = DYNAMIC" table:"guest"`, "guest", " ROW_FORMAT = DYNAMIC"},
 	} {
 		v := v
 		t.Run(fmt.Sprintf("annotation(%#v)", v.comment), func(t *testing.T) {
@@ -325,7 +330,7 @@ func TestDiffAnnotation(t *testing.T) {
 			expect := []string{
 				fmt.Sprintf("CREATE TABLE `" + v.tableName + "` (\n" +
 					"  `a` INT NOT NULL\n" +
-					")"),
+					")" + v.option),
 			}
 			if !reflect.DeepEqual(actual, expect) {
 				t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)

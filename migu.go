@@ -60,9 +60,9 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	structMap := map[string][]*field{}
+	structMap := map[string]*table{}
 	for name, structAST := range structASTMap {
-		for _, fld := range structAST.Fields.List {
+		for _, fld := range structAST.StructType.Fields.List {
 			typeName, err := detectTypeName(fld)
 			if err != nil {
 				return nil, err
@@ -83,7 +83,12 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 				if field.Column == "" {
 					field.Column = stringutil.ToSnakeCase(field.Name)
 				}
-				structMap[name] = append(structMap[name], &field)
+				if structMap[name] == nil {
+					structMap[name] = &table{
+						Option: structAST.Annotation.Option,
+					}
+				}
+				structMap[name].Fields = append(structMap[name].Fields, &field)
 			}
 		}
 	}
@@ -99,17 +104,21 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 	d := &dialect.MySQL{}
 	var migrations []string
 	for _, name := range names {
-		model := structMap[name]
+		tbl := structMap[name]
 		columns, ok := tableMap[name]
 		tableName := name
 		if !ok {
-			columns := make([]string, len(model))
-			for i, f := range model {
+			columns := make([]string, len(tbl.Fields))
+			for i, f := range tbl.Fields {
 				columns[i] = columnSQL(d, f)
 			}
-			migrations = append(migrations, fmt.Sprintf(`CREATE TABLE %s (
+			query := fmt.Sprintf(`CREATE TABLE %s (
   %s
-)`, d.Quote(tableName), strings.Join(columns, ",\n  ")))
+)`, d.Quote(tableName), strings.Join(columns, ",\n  "))
+			if tbl.Option != "" {
+				query += " " + tbl.Option
+			}
+			migrations = append(migrations, query)
 		} else {
 			table := map[string]*columnSchema{}
 			for _, column := range columns {
@@ -117,7 +126,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			}
 			var modifySQLs []string
 			var dropSQLs []string
-			for _, f := range model {
+			for _, f := range tbl.Fields {
 				m, d, err := alterTableSQLs(d, tableName, table, f)
 				if err != nil {
 					return nil, err
@@ -138,6 +147,11 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		migrations = append(migrations, fmt.Sprintf(`DROP TABLE %s`, d.Quote(stringutil.ToSnakeCase(name))))
 	}
 	return migrations, nil
+}
+
+type table struct {
+	Fields []*field
+	Option string
 }
 
 type field struct {
@@ -337,13 +351,18 @@ func fprintln(output io.Writer, decl ast.Decl) error {
 	return nil
 }
 
-func makeStructASTMap(filename string, src interface{}) (map[string]*ast.StructType, error) {
+type structAST struct {
+	StructType *ast.StructType
+	Annotation *annotation
+}
+
+func makeStructASTMap(filename string, src interface{}) (map[string]*structAST, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
 	if err != nil {
 		return nil, err
 	}
-	structASTMap := map[string]*ast.StructType{}
+	structASTMap := map[string]*structAST{}
 	for _, decl := range f.Decls {
 		d, ok := decl.(*ast.GenDecl)
 		if !ok || d.Tok != token.TYPE || d.Doc == nil {
@@ -365,10 +384,14 @@ func makeStructASTMap(filename string, src interface{}) (map[string]*ast.StructT
 			if !ok {
 				continue
 			}
+			st := &structAST{
+				StructType: t,
+				Annotation: annotation,
+			}
 			if annotation.Table != "" {
-				structASTMap[annotation.Table] = t
+				structASTMap[annotation.Table] = st
 			} else {
-				structASTMap[stringutil.ToSnakeCase(s.Name.Name)] = t
+				structASTMap[stringutil.ToSnakeCase(s.Name.Name)] = st
 			}
 		}
 	}
@@ -376,7 +399,8 @@ func makeStructASTMap(filename string, src interface{}) (map[string]*ast.StructT
 }
 
 type annotation struct {
-	Table string
+	Table  string
+	Option string
 }
 
 func parseAnnotation(g *ast.CommentGroup) (*annotation, error) {
@@ -401,14 +425,17 @@ func parseAnnotation(g *ast.CommentGroup) (*annotation, error) {
 			ss := strings.SplitN(scanner.Text(), string(annotationSeparator), 2)
 			switch k, v := ss[0], ss[1]; k {
 			case "table":
-				if b := v[0]; b == '"' || b == '`' {
-					t, err := strconv.Unquote(v)
-					if err != nil {
-						return nil, fmt.Errorf("migu: BUG: %v", err)
-					}
-					v = t
+				s, err := parseString(v)
+				if err != nil {
+					return nil, fmt.Errorf("migu: BUG: %v", err)
 				}
-				a.Table = v
+				a.Table = s
+			case "option":
+				s, err := parseString(v)
+				if err != nil {
+					return nil, fmt.Errorf("migu: BUG: %v", err)
+				}
+				a.Option = s
 			default:
 				return nil, fmt.Errorf("migu: unsupported annotation: %v", k)
 			}
@@ -471,6 +498,13 @@ func splitAnnotationTags(data []byte, atEOF bool) (advance int, token []byte, er
 		}
 	}
 	return advance, bytes.TrimSpace(data[:advance]), nil
+}
+
+func parseString(s string) (string, error) {
+	if b := s[0]; b == '"' || b == '`' {
+		return strconv.Unquote(s)
+	}
+	return s, nil
 }
 
 func detectTypeName(n ast.Node) (string, error) {

@@ -221,7 +221,11 @@ type User struct {
 
 ## Annotation
 
-You can specify the table name of the database by the `table` annotation tag.
+You can specify the some options to the table of database by annotation tags.
+
+### Table name
+
+By default, Migu will decide the table name of the database from the name of Go struct. If you want to specify the different table name, use `table` annotation tag.
 
 ```go
 package model
@@ -237,6 +241,27 @@ type User struct {
 CREATE TABLE `guest` (
   `name` VARCHAR(255) NOT NULL
 )
+--------dry-run done 0.000s--------
+```
+
+### Table option
+
+If you want to specify a table option such as `ENGINE`, `DEFAULT CHARSET`, `ROW_FORMAT`, and so on, use `option` annotation tag.
+
+```go
+package model
+
+//+migu option:"ENGINE=InnoDB ROW_FORMAT=DYNAMIC"
+type User struct {
+	Name string
+}
+```
+
+```
+--------dry-run applying--------
+CREATE TABLE `user` (
+  `name` VARCHAR(255) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC
 --------dry-run done 0.000s--------
 ```
 
