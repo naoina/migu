@@ -1,6 +1,8 @@
 package migu
 
 import (
+	"bufio"
+	"bytes"
 	"database/sql"
 	"fmt"
 	"go/ast"
@@ -18,8 +20,9 @@ import (
 )
 
 const (
-	commentPrefix = "//"
-	marker        = "+migu"
+	commentPrefix       = "//"
+	marker              = "+migu"
+	annotationSeparator = ':'
 )
 
 // Sync synchronizes the schema between Go's struct and the database.
@@ -98,7 +101,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 	for _, name := range names {
 		model := structMap[name]
 		columns, ok := tableMap[name]
-		tableName := stringutil.ToSnakeCase(name)
+		tableName := name
 		if !ok {
 			columns := make([]string, len(model))
 			for i, f := range model {
@@ -259,8 +262,7 @@ ORDER BY TABLE_NAME, ORDINAL_POSITION`
 		); err != nil {
 			return nil, err
 		}
-		tableName := stringutil.ToUpperCamelCase(schema.TableName)
-		tableMap[tableName] = append(tableMap[tableName], schema)
+		tableMap[schema.TableName] = append(tableMap[schema.TableName], schema)
 		if tableIndex, exists := indexMap[schema.TableName]; exists {
 			if info, exists := tableIndex[schema.ColumnName]; exists {
 				schema.NonUnique = info.NonUnique
@@ -344,10 +346,14 @@ func makeStructASTMap(filename string, src interface{}) (map[string]*ast.StructT
 	structASTMap := map[string]*ast.StructType{}
 	for _, decl := range f.Decls {
 		d, ok := decl.(*ast.GenDecl)
-		if !ok || d.Tok != token.TYPE {
+		if !ok || d.Tok != token.TYPE || d.Doc == nil {
 			continue
 		}
-		if !hasAnnotation(d.Doc) {
+		annotation, err := parseAnnotation(d.Doc)
+		if err != nil {
+			return nil, err
+		}
+		if annotation == nil {
 			continue
 		}
 		for _, spec := range d.Specs {
@@ -355,24 +361,116 @@ func makeStructASTMap(filename string, src interface{}) (map[string]*ast.StructT
 			if !ok {
 				continue
 			}
-			if t, ok := s.Type.(*ast.StructType); ok {
-				structASTMap[s.Name.Name] = t
+			t, ok := s.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			if annotation.Table != "" {
+				structASTMap[annotation.Table] = t
+			} else {
+				structASTMap[stringutil.ToSnakeCase(s.Name.Name)] = t
 			}
 		}
 	}
 	return structASTMap, nil
 }
 
-func hasAnnotation(g *ast.CommentGroup) bool {
-	if g == nil {
-		return false
-	}
+type annotation struct {
+	Table string
+}
+
+func parseAnnotation(g *ast.CommentGroup) (*annotation, error) {
 	for _, c := range g.List {
-		if strings.HasPrefix(c.Text, commentPrefix) && strings.TrimSpace(c.Text[len(commentPrefix):]) == marker {
-			return true
+		if !strings.HasPrefix(c.Text, commentPrefix) {
+			continue
+		}
+		s := strings.TrimSpace(c.Text[len(commentPrefix):])
+		if !strings.HasPrefix(s, marker) {
+			continue
+		}
+		if len(s) == len(marker) {
+			return &annotation{}, nil
+		}
+		if !isSpace(s[len(marker)]) {
+			continue
+		}
+		var a annotation
+		scanner := bufio.NewScanner(strings.NewReader(s[len(marker):]))
+		scanner.Split(splitAnnotationTags)
+		for scanner.Scan() {
+			ss := strings.SplitN(scanner.Text(), string(annotationSeparator), 2)
+			switch k, v := ss[0], ss[1]; k {
+			case "table":
+				if b := v[0]; b == '"' || b == '`' {
+					t, err := strconv.Unquote(v)
+					if err != nil {
+						return nil, fmt.Errorf("migu: BUG: %v", err)
+					}
+					v = t
+				}
+				a.Table = v
+			default:
+				return nil, fmt.Errorf("migu: unsupported annotation: %v", k)
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("%v: %v", err, c.Text)
+		}
+		return &a, nil
+	}
+	return nil, nil
+}
+
+func splitAnnotationTags(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF {
+		return 0, nil, nil
+	}
+	for ; advance < len(data); advance++ {
+		if !isSpace(data[advance]) {
+			break
 		}
 	}
-	return false
+	i := bytes.IndexByte(data[advance:], annotationSeparator)
+	if i < 1 {
+		return 0, nil, fmt.Errorf("migu: invalid annotation")
+	}
+	advance += i + 1
+	if advance >= len(data) {
+		return 0, nil, fmt.Errorf("migu: invalid annotation")
+	}
+	switch quote := data[advance]; quote {
+	case '"':
+		for advance++; advance < len(data); advance++ {
+			i := bytes.IndexByte(data[advance:], quote)
+			if i < 0 {
+				break
+			}
+			advance += i
+			if data[advance-1] != '\\' {
+				return advance + 1, bytes.TrimSpace(data[:advance+1]), nil
+			}
+		}
+		return 0, nil, fmt.Errorf("migu: invalid annotation: string not terminated")
+	case '`':
+		for advance++; advance < len(data); advance++ {
+			i := bytes.IndexByte(data[advance:], quote)
+			if i < 0 {
+				break
+			}
+			advance += i
+			return advance + 1, bytes.TrimSpace(data[:advance+1]), nil
+		}
+		return 0, nil, fmt.Errorf("migu: invalid annotation: string not terminated")
+	}
+	if isSpace(data[advance]) {
+		return 0, nil, fmt.Errorf("migu: invalid annotation: value not given")
+	}
+	for advance++; advance < len(data); advance++ {
+		if isSpace(data[advance]) {
+			return advance, bytes.TrimSpace(data[:advance]), nil
+		}
+	}
+	return advance, bytes.TrimSpace(data[:advance]), nil
 }
 
 func detectTypeName(n ast.Node) (string, error) {

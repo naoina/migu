@@ -219,6 +219,27 @@ type User struct {
 --------dry-run done 0.000s--------
 ```
 
+## Annotation
+
+You can specify the table name of the database by the `table` annotation tag.
+
+```go
+package model
+
+//+migu table:"guest"
+type User struct {
+	Name string
+}
+```
+
+```
+--------dry-run applying--------
+CREATE TABLE `guest` (
+  `name` VARCHAR(255) NOT NULL
+)
+--------dry-run done 0.000s--------
+```
+
 ## Supported database
 
 * MariaDB/MySQL

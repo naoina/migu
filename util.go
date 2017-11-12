@@ -8,3 +8,7 @@ func inStrings(a []string, s string) bool {
 	}
 	return false
 }
+
+func isSpace(b byte) bool {
+	return b == ' ' || b == '\t'
+}

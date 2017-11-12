@@ -244,8 +244,6 @@ func TestDiffMarker(t *testing.T) {
 		comment string
 	}{
 		{"//migu"},
-		{"//+migu a"},
-		{"// +migu a"},
 		{"//a+migu"},
 		{"/*+migu*/"},
 		{"/* +migu*/"},
@@ -292,6 +290,79 @@ func TestDiffMarker(t *testing.T) {
 			t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
 		}
 	})
+}
+
+func TestDiffAnnotation(t *testing.T) {
+	before(t)
+	for _, v := range []struct {
+		comment   string
+		tableName string
+	}{
+		{`//+migu table:guest`, "guest"},
+		{`//+migu table:"guest table"`, "guest table"},
+		{`//+migu table:GuestTable`, "GuestTable"},
+		{`//+migu table:guest\ntable`, `guest\ntable`},
+		{`//+migu table:"\"guest\""`, `"guest"`},
+		{`//+migu table:"hoge\"guest\""`, `hoge"guest"`},
+		{`//+migu table:"\"guest\"hoge"`, `"guest"hoge`},
+		{`//+migu table:"\"\"guest\""`, `""guest"`},
+		{`//+migu table:"\"\"guest\"\""`, `""guest""`},
+		{`//+migu table:"a\nb"`, "a\nb"},
+		{`//+migu table:a"`, `a"`},
+		{`//+migu table:a""`, `a""`},
+	} {
+		v := v
+		t.Run(fmt.Sprintf("annotation(%#v)", v.comment), func(t *testing.T) {
+			src := fmt.Sprintf("package migu_test\n" +
+				v.comment + "\n" +
+				"type User struct {\n" +
+				"	A int\n" +
+				"}")
+			actual, err := migu.Diff(db, "", src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expect := []string{
+				fmt.Sprintf("CREATE TABLE `" + v.tableName + "` (\n" +
+					"  `a` INT NOT NULL\n" +
+					")"),
+			}
+			if !reflect.DeepEqual(actual, expect) {
+				t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+			}
+		})
+	}
+
+	for _, v := range []struct {
+		comment string
+		expect  string
+	}{
+		{"//+migu a", "migu: invalid annotation: //+migu a"},
+		{"// +migu a", "migu: invalid annotation: // +migu a"},
+		{"// +migu a ", "migu: invalid annotation: // +migu a "},
+		{`//+migu table:"a" a`, `migu: invalid annotation: //+migu table:"a" a`},
+		{`//+migu table:"a"a`, `migu: invalid annotation: //+migu table:"a"a`},
+		{`//+migu table:"a":a`, `migu: invalid annotation: //+migu table:"a":a`},
+		{`//+migu table:"a" :a`, `migu: invalid annotation: //+migu table:"a" :a`},
+		{`//+migu table:"a" a:`, `migu: invalid annotation: //+migu table:"a" a:`},
+		{`//+migu table:"a`, `migu: invalid annotation: string not terminated: //+migu table:"a`},
+		{`//+migu table: "a"`, `migu: invalid annotation: value not given: //+migu table: "a"`},
+	} {
+		v := v
+		t.Run(fmt.Sprintf("invalid annotation(%#v)", v.comment), func(t *testing.T) {
+			src := fmt.Sprintf("package migu_test\n" +
+				v.comment + "\n" +
+				"type User struct {\n" +
+				"	A int\n" +
+				"}")
+			_, err := migu.Diff(db, "", src)
+			actual := fmt.Sprint(err)
+			expect := v.expect
+			if !reflect.DeepEqual(actual, expect) {
+				t.Errorf(`migu.Diff(db, "", %#v) => _, %#v; want _, %#v`, src, actual, expect)
+			}
+		})
+	}
 }
 
 func TestFprint(t *testing.T) {
