@@ -189,7 +189,7 @@ func Fprint(output io.Writer, db *sql.DB) error {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		s, err := structAST(name, tableMap[name])
+		s, err := makeStructAST(name, tableMap[name])
 		if err != nil {
 			return err
 		}
@@ -592,7 +592,7 @@ func importAST(pkg string) ast.Decl {
 	}
 }
 
-func structAST(name string, schemas []*columnSchema) (ast.Decl, error) {
+func makeStructAST(name string, schemas []*columnSchema) (ast.Decl, error) {
 	var fields []*ast.Field
 	for _, schema := range schemas {
 		f, err := schema.fieldAST()
