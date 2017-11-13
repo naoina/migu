@@ -110,9 +110,9 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			for i, f := range tbl.Fields {
 				columns[i] = columnSQL(d, f)
 			}
-			query := fmt.Sprintf(`CREATE TABLE %s (
-  %s
-)`, d.Quote(tableName), strings.Join(columns, ",\n  "))
+			query := fmt.Sprintf("CREATE TABLE %s (\n"+
+				"  %s\n"+
+				")", d.Quote(tableName), strings.Join(columns, ",\n  "))
 			if tbl.Option != "" {
 				query += " " + tbl.Option
 			}
@@ -231,24 +231,25 @@ func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
 	if err != nil {
 		return nil, err
 	}
-	query := `
-SELECT
-  TABLE_NAME,
-  COLUMN_NAME,
-  COLUMN_DEFAULT,
-  IS_NULLABLE,
-  DATA_TYPE,
-  CHARACTER_MAXIMUM_LENGTH,
-  CHARACTER_OCTET_LENGTH,
-  NUMERIC_PRECISION,
-  NUMERIC_SCALE,
-  COLUMN_TYPE,
-  COLUMN_KEY,
-  EXTRA,
-  COLUMN_COMMENT
-FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = ?
-ORDER BY TABLE_NAME, ORDINAL_POSITION`
+	query := strings.Join([]string{
+		"SELECT",
+		"  TABLE_NAME,",
+		"  COLUMN_NAME,",
+		"  COLUMN_DEFAULT,",
+		"  IS_NULLABLE,",
+		"  DATA_TYPE,",
+		"  CHARACTER_MAXIMUM_LENGTH,",
+		"  CHARACTER_OCTET_LENGTH,",
+		"  NUMERIC_PRECISION,",
+		"  NUMERIC_SCALE,",
+		"  COLUMN_TYPE,",
+		"  COLUMN_KEY,",
+		"  EXTRA,",
+		"  COLUMN_COMMENT",
+		"FROM information_schema.COLUMNS",
+		"WHERE TABLE_SCHEMA = ?",
+		"ORDER BY TABLE_NAME, ORDINAL_POSITION",
+	}, "\n")
 	rows, err := db.Query(query, dbname)
 	if err != nil {
 		return nil, err
@@ -300,14 +301,15 @@ type indexInfo struct {
 }
 
 func getIndexMap(db *sql.DB, dbname string) (map[string]map[string]indexInfo, error) {
-	query := `
-SELECT
-  TABLE_NAME,
-  COLUMN_NAME,
-  NON_UNIQUE,
-  INDEX_NAME
-FROM information_schema.STATISTICS
-WHERE TABLE_SCHEMA = ?`
+	query := strings.Join([]string{
+		"SELECT",
+		"  TABLE_NAME,",
+		"  COLUMN_NAME,",
+		"  NON_UNIQUE,",
+		"  INDEX_NAME",
+		"FROM information_schema.STATISTICS",
+		"WHERE TABLE_SCHEMA = ?",
+	}, "\n")
 	rows, err := db.Query(query, dbname)
 	if err != nil {
 		return nil, err
