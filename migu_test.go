@@ -370,6 +370,34 @@ func TestDiffAnnotation(t *testing.T) {
 	}
 }
 
+func TestDiffDropTable(t *testing.T) {
+	before(t)
+	for _, v := range []struct {
+		table string
+	}{
+		{"userHoge"},
+	} {
+		v := v
+		t.Run(fmt.Sprintf("DROP TABLE %#v", v.table), func(t *testing.T) {
+			if _, err := db.Exec(`CREATE TABLE ` + v.table + `(id int)`); err != nil {
+				t.Fatal(err)
+			}
+			defer db.Exec(`DROP TABLE ` + v.table)
+			src := "package migu_test\n"
+			actual, err := migu.Diff(db, "", src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expect := []string{
+				fmt.Sprintf("DROP TABLE `" + v.table + "`"),
+			}
+			if !reflect.DeepEqual(actual, expect) {
+				t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+			}
+		})
+	}
+}
+
 func TestFprint(t *testing.T) {
 	for _, v := range []struct {
 		sqls   []string

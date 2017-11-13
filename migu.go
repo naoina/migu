@@ -142,7 +142,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		delete(tableMap, name)
 	}
 	for name := range tableMap {
-		migrations = append(migrations, fmt.Sprintf(`DROP TABLE %s`, d.Quote(stringutil.ToSnakeCase(name))))
+		migrations = append(migrations, fmt.Sprintf(`DROP TABLE %s`, d.Quote(name)))
 	}
 	return migrations, nil
 }
