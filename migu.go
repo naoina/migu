@@ -21,6 +21,7 @@ const (
 	commentPrefix       = "//"
 	marker              = "+migu"
 	annotationSeparator = ':'
+	defaultVarcharSize  = 255
 )
 
 // Sync synchronizes the schema between Go's struct and the database.
@@ -168,6 +169,7 @@ type field struct {
 func newField(typeName string, f *ast.Field) (*field, error) {
 	ret := &field{
 		Type: typeName,
+		Size: defaultVarcharSize,
 	}
 	if f.Tag != nil {
 		s, err := strconv.Unquote(f.Tag.Value)
@@ -626,7 +628,9 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 		tags = append(tags, tagUnique)
 	}
 	if schema.hasSize() {
-		tags = append(tags, fmt.Sprintf("%s:%d", tagSize, *schema.CharacterMaximumLength))
+		if *schema.CharacterMaximumLength != defaultVarcharSize {
+			tags = append(tags, fmt.Sprintf("%s:%d", tagSize, *schema.CharacterMaximumLength))
+		}
 	}
 	if len(tags) > 0 {
 		field.Tag = &ast.BasicLit{
@@ -731,5 +735,5 @@ func (schema *columnSchema) hasUniqueKey() bool {
 }
 
 func (schema *columnSchema) hasSize() bool {
-	return schema.DataType == "varchar" && schema.CharacterMaximumLength != nil && *schema.CharacterMaximumLength != uint64(255)
+	return schema.DataType == "varchar" && schema.CharacterMaximumLength != nil
 }

@@ -64,9 +64,6 @@ func (d *MySQL) AutoIncrement() string {
 }
 
 func (d *MySQL) varchar(size uint64) string {
-	if size == 0 {
-		size = 255 // default.
-	}
 	switch {
 	case size < 21846:
 		return fmt.Sprintf("VARCHAR(%d)", size)

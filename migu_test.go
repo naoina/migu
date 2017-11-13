@@ -28,6 +28,48 @@ func before(t *testing.T) {
 	}
 }
 
+func TestDiff(t *testing.T) {
+	before(t)
+	t.Run("idempotency", func(t *testing.T) {
+		for _, v := range []struct {
+			column string
+		}{
+			{"Name string"},
+			{"Name string `migu:\"size:255\"`"},
+		} {
+			v := v
+			t.Run(fmt.Sprintf("%v", v.column), func(t *testing.T) {
+				src := fmt.Sprintf("package migu_test\n"+
+					"//+migu\n"+
+					"type User struct {\n"+
+					"	%s\n"+
+					"}", v.column)
+				results, err := migu.Diff(db, "", src)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer db.Exec("DROP TABLE `user`")
+				if results == nil {
+					t.Fatalf("results must be not nil; got %#v", results)
+				}
+				for _, q := range results {
+					if _, err := db.Exec(q); err != nil {
+						t.Fatal(err)
+					}
+				}
+				actual, err := migu.Diff(db, "", src)
+				if err != nil {
+					t.Fatal(err)
+				}
+				expect := []string(nil)
+				if !reflect.DeepEqual(actual, expect) {
+					t.Errorf(`2. migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+				}
+			})
+		}
+	})
+}
+
 func TestDiffWithSrc(t *testing.T) {
 	before(t)
 	types := map[string]string{
