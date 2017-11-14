@@ -24,6 +24,29 @@ const (
 	defaultVarcharSize  = 255
 )
 
+var (
+	sameTypeMap = func() map[string][]string {
+		m := map[string][]string{}
+		for _, types := range [][]string{
+			{"*int8", "*bool", "sql.NullBool"},
+			{"int8", "bool"},
+			{"*uint", "*uint32"},
+			{"uint", "uint32"},
+			{"*int", "*int32"},
+			{"int", "int32"},
+			{"*int64", "sql.NullInt64"},
+			{"*string", "sql.NullString"},
+			{"*float32", "*float64", "sql.NullFloat64"},
+			{"float32", "float64"},
+		} {
+			for _, t := range types {
+				m[t] = types
+			}
+		}
+		return m
+	}()
+)
+
 // Sync synchronizes the schema between Go's struct and the database.
 // Go's struct may be provided via the filename of the source file, or via
 // the src parameter.
@@ -73,22 +96,15 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			if f.Ignore {
 				continue
 			}
-			for _, ident := range fld.Names {
-				if !(ident.IsExported() || (ident.Name == "_" && f.Column != "")) {
-					continue
-				}
-				field := *f
-				field.Name = ident.Name
-				if field.Column == "" {
-					field.Column = stringutil.ToSnakeCase(field.Name)
-				}
-				if structMap[name] == nil {
-					structMap[name] = &table{
-						Option: structAST.Annotation.Option,
-					}
-				}
-				structMap[name].Fields = append(structMap[name].Fields, &field)
+			if !(ast.IsExported(f.Name) || (f.Name == "_" && f.Name != f.Column)) {
+				continue
 			}
+			if structMap[name] == nil {
+				structMap[name] = &table{
+					Option: structAST.Annotation.Option,
+				}
+			}
+			structMap[name].Fields = append(structMap[name].Fields, f)
 		}
 	}
 	tableMap, err := getTableMap(db)
@@ -104,40 +120,14 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 	var migrations []string
 	for _, name := range names {
 		tbl := structMap[name]
-		columns, ok := tableMap[name]
-		tableName := name
-		if !ok {
-			columns := make([]string, len(tbl.Fields))
-			for i, f := range tbl.Fields {
-				columns[i] = columnSQL(d, f)
+		if columns, ok := tableMap[name]; ok {
+			queries, err := makeAlterTableQueries(d, name, tbl, columns)
+			if err != nil {
+				return nil, err
 			}
-			query := fmt.Sprintf("CREATE TABLE %s (\n"+
-				"  %s\n"+
-				")", d.Quote(tableName), strings.Join(columns, ",\n  "))
-			if tbl.Option != "" {
-				query += " " + tbl.Option
-			}
-			migrations = append(migrations, query)
+			migrations = append(migrations, queries...)
 		} else {
-			table := map[string]*columnSchema{}
-			for _, column := range columns {
-				table[column.ColumnName] = column
-			}
-			var modifySQLs []string
-			var dropSQLs []string
-			for _, f := range tbl.Fields {
-				m, d, err := alterTableSQLs(d, tableName, table, f)
-				if err != nil {
-					return nil, err
-				}
-				modifySQLs = append(modifySQLs, m...)
-				dropSQLs = append(dropSQLs, d...)
-				delete(table, f.Column)
-			}
-			migrations = append(migrations, append(dropSQLs, modifySQLs...)...)
-			for _, f := range table {
-				migrations = append(migrations, fmt.Sprintf(`ALTER TABLE %s DROP %s`, d.Quote(tableName), d.Quote(f.ColumnName)))
-			}
+			migrations = append(migrations, makeCreateTableQueries(d, name, tbl)...)
 		}
 		delete(structMap, name)
 		delete(tableMap, name)
@@ -146,6 +136,57 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		migrations = append(migrations, fmt.Sprintf(`DROP TABLE %s`, d.Quote(name)))
 	}
 	return migrations, nil
+}
+
+func makeCreateTableQueries(d dialect.Dialect, tableName string, t *table) []string {
+	tableName = d.Quote(tableName)
+	columns := make([]string, len(t.Fields))
+	for i, f := range t.Fields {
+		columns[i] = columnSQL(d, f)
+	}
+	query := fmt.Sprintf("CREATE TABLE %s (\n"+
+		"  %s\n"+
+		")", tableName, strings.Join(columns, ",\n  "))
+	if t.Option != "" {
+		query += " " + t.Option
+	}
+	queries := []string{query}
+	return queries
+}
+
+func makeAlterTableQueries(d dialect.Dialect, tableName string, t *table, columns []*columnSchema) ([]string, error) {
+	tableName = d.Quote(tableName)
+	oldFields := make([]*field, 0, len(columns))
+	for _, c := range columns {
+		oldFieldAST, err := c.fieldAST()
+		if err != nil {
+			return nil, err
+		}
+		f, err := newField(fmt.Sprint(oldFieldAST.Type), oldFieldAST)
+		if err != nil {
+			return nil, err
+		}
+		oldFields = append(oldFields, f)
+	}
+	var modifySQLs []string
+	var dropSQLs []string
+	fields := makeAlterTableFields(oldFields, t.Fields)
+	for _, f := range fields {
+		switch {
+		case f.IsAdded():
+			modifySQLs = append(modifySQLs, fmt.Sprintf("ALTER TABLE %s ADD %s", tableName, d.Quote(f.new.Column)))
+		case f.IsDropped():
+			dropSQLs = append(dropSQLs, fmt.Sprintf("ALTER TABLE %s DROP %s", tableName, d.Quote(f.old.Column)))
+		case f.IsModified():
+			specs := make([]string, 0, 1)
+			if f.old.PrimaryKey != f.new.PrimaryKey && !f.new.PrimaryKey {
+				specs = append(specs, "DROP PRIMARY KEY")
+			}
+			specs = append(specs, fmt.Sprintf("MODIFY %s", columnSQL(d, f.new)))
+			modifySQLs = append(modifySQLs, fmt.Sprintf("ALTER TABLE %s %s", tableName, strings.Join(specs, ", ")))
+		}
+	}
+	return append(dropSQLs, modifySQLs...), nil
 }
 
 type table struct {
@@ -168,6 +209,7 @@ type field struct {
 
 func newField(typeName string, f *ast.Field) (*field, error) {
 	ret := &field{
+		Name: f.Names[0].Name,
 		Type: typeName,
 		Size: defaultVarcharSize,
 	}
@@ -183,7 +225,72 @@ func newField(typeName string, f *ast.Field) (*field, error) {
 	if f.Comment != nil {
 		ret.Comment = strings.TrimSpace(f.Comment.Text())
 	}
+	if ret.Column == "" {
+		ret.Column = stringutil.ToSnakeCase(ret.Name)
+	}
 	return ret, nil
+}
+
+
+func (f *field) IsDifferent(another *field) bool {
+	if f == nil && another == nil {
+		return false
+	}
+	return ((f == nil && another != nil) || (f != nil && another == nil)) ||
+		!isSameType(f.Type, another.Type) ||
+		f.Default != another.Default ||
+		f.Size != another.Size ||
+		f.Column != another.Column ||
+		f.Unique != another.Unique ||
+		f.Comment != another.Comment ||
+		f.AutoIncrement != another.AutoIncrement ||
+		f.PrimaryKey != another.PrimaryKey
+}
+
+type modifiedField struct {
+	old *field
+	new *field
+}
+
+func (f *modifiedField) IsAdded() bool {
+	return f.old == nil && f.new != nil
+}
+
+func (f *modifiedField) IsDropped() bool {
+	return f.old != nil && f.new == nil
+}
+
+func (f *modifiedField) IsModified() bool {
+	return f.old != nil && f.new != nil
+}
+
+func makeAlterTableFields(oldFields, newFields []*field) (fields []modifiedField) {
+	oldTable := make(map[string]*field, len(oldFields))
+	for _, f := range oldFields {
+		oldTable[f.Column] = f
+	}
+	newTable := make(map[string]*field, len(newFields))
+	for _, f := range newFields {
+		newTable[f.Column] = f
+	}
+	for _, f := range newFields {
+		if oldF := oldTable[f.Column]; oldF.IsDifferent(f) {
+			fields = append(fields, modifiedField{
+				old: oldF,
+				new: f,
+			})
+		}
+	}
+	for _, f := range oldFields {
+		newField := newTable[f.Column]
+		if newField == nil {
+			fields = append(fields, modifiedField{
+				old: f,
+				new: nil,
+			})
+		}
+	}
+	return fields
 }
 
 // Fprint generates Go's structs from database schema and writes to output.
@@ -447,53 +554,6 @@ func columnSQL(d dialect.Dialect, f *field) string {
 	return strings.Join(column, " ")
 }
 
-func alterTableSQLs(d dialect.Dialect, tableName string, table map[string]*columnSchema, f *field) (modifySQLs, dropSQLs []string, err error) {
-	column, exists := table[f.Column]
-	if !exists {
-		return []string{
-			fmt.Sprintf(`ALTER TABLE %s ADD %s`, d.Quote(tableName), columnSQL(d, f)),
-		}, nil, nil
-	}
-	types, err := column.GoFieldTypes()
-	if err != nil {
-		return nil, nil, err
-	}
-	oldFieldAST, err := column.fieldAST()
-	if err != nil {
-		return nil, nil, err
-	}
-	oldF, err := newField(f.Type, oldFieldAST)
-	if err != nil {
-		return nil, nil, err
-	}
-	oldF.Name = f.Name
-	oldF.Column = f.Column
-	if !inStrings(types, f.Type) || !reflect.DeepEqual(oldF, f) {
-		tableName = d.Quote(tableName)
-		colSQL := columnSQL(d, f)
-		modifySQLs = append(modifySQLs, fmt.Sprintf(`ALTER TABLE %s MODIFY %s`, tableName, colSQL))
-		var drop []string
-		if oldF.PrimaryKey != f.PrimaryKey && !f.PrimaryKey {
-			drop = append(drop, `DROP PRIMARY KEY`)
-			if column.hasAutoIncrement() {
-				drop = append(drop, `MODIFY `+colSQL)
-				modifySQLs = nil
-			}
-		}
-		if oldF.Unique != f.Unique && !f.Unique {
-			if column.hasPrimaryKey() {
-				drop = append(drop, `DROP PRIMARY KEY`)
-			} else {
-				drop = append(drop, `DROP INDEX `+column.IndexName)
-			}
-		}
-		if len(drop) > 0 {
-			dropSQLs = append(dropSQLs, fmt.Sprintf(`ALTER TABLE %s %s`, tableName, strings.Join(drop, ", ")))
-		}
-	}
-	return modifySQLs, dropSQLs, nil
-}
-
 func hasDatetimeColumn(t map[string][]*columnSchema) bool {
 	for _, schemas := range t {
 		for _, schema := range schemas {
@@ -582,6 +642,10 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 		}
 	}
 	return nil
+}
+
+func isSameType(t1, t2 string) bool {
+	return t1 == t2 || inStrings(sameTypeMap[t1], t2)
 }
 
 type columnSchema struct {
