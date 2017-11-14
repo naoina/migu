@@ -269,10 +269,11 @@ CREATE TABLE `user` (
 
 * MariaDB/MySQL
 
-## TODO
+## FAQ
 
-* Struct Tag support for some ORM
-* PostgreSQL and SQLite3 support
+### When does Migu support PostgreSQL and SQLite3?
+
+It is when a Pull Request comes from you!
 
 ## License
 
