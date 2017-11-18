@@ -136,20 +136,22 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 				oldFields = append(oldFields, f)
 			}
 			fields := makeAlterTableFields(oldFields, tbl.Fields)
+			specs := make([]string, 0, len(fields))
 			for _, f := range fields {
 				switch {
 				case f.IsAdded():
-					migrations = append(migrations, fmt.Sprintf("ALTER TABLE %s ADD %s", tableName, columnSQL(d, f.new)))
+					specs = append(specs, fmt.Sprintf("ADD %s", columnSQL(d, f.new)))
 				case f.IsDropped():
-					migrations = append(migrations, fmt.Sprintf("ALTER TABLE %s DROP %s", tableName, d.Quote(f.old.Column)))
+					specs = append(specs, fmt.Sprintf("DROP %s", d.Quote(f.old.Column)))
 				case f.IsModified():
-					specs := make([]string, 0, 1)
 					if f.old.PrimaryKey != f.new.PrimaryKey && !f.new.PrimaryKey {
 						specs = append(specs, "DROP PRIMARY KEY")
 					}
-					specs = append(specs, fmt.Sprintf("MODIFY %s", columnSQL(d, f.new)))
-					migrations = append(migrations, fmt.Sprintf("ALTER TABLE %s %s", tableName, strings.Join(specs, ", ")))
+					specs = append(specs, fmt.Sprintf("CHANGE %s %s", d.Quote(f.old.Column), columnSQL(d, f.new)))
 				}
+			}
+			if len(specs) > 0 {
+				migrations = append(migrations, fmt.Sprintf("ALTER TABLE %s %s", tableName, strings.Join(specs, ", ")))
 			}
 			for _, f := range fields {
 				if f.IsDropped() {
@@ -348,13 +350,19 @@ func makeAlterTableFields(oldFields, newFields []*field) (fields []modifiedField
 	oldTable := make(map[string]*field, len(oldFields))
 	for _, f := range oldFields {
 		oldTable[f.Column] = f
+		oldTable[f.Name] = f
 	}
 	newTable := make(map[string]*field, len(newFields))
 	for _, f := range newFields {
 		newTable[f.Column] = f
+		newTable[f.Name] = f
 	}
 	for _, f := range newFields {
-		if oldF := oldTable[f.Column]; oldF.IsDifferent(f) {
+		oldF := oldTable[f.Column]
+		if oldF == nil {
+			oldF = oldTable[f.Name]
+		}
+		if oldF.IsDifferent(f) {
 			fields = append(fields, modifiedField{
 				old: oldF,
 				new: f,
@@ -362,8 +370,7 @@ func makeAlterTableFields(oldFields, newFields []*field) (fields []modifiedField
 		}
 	}
 	for _, f := range oldFields {
-		newField := newTable[f.Column]
-		if newField == nil {
+		if newTable[f.Column] == nil && newTable[f.Name] == nil {
 			fields = append(fields, modifiedField{
 				old: f,
 				new: nil,

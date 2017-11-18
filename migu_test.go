@@ -196,7 +196,7 @@ func TestDiff(t *testing.T) {
 		}
 	})
 
-	t.Run("add new column", func(t *testing.T) {
+	t.Run("ALTER TABLE", func(t *testing.T) {
 		before(t)
 		for _, v := range []struct {
 			columns []string
@@ -214,6 +214,25 @@ func TestDiff(t *testing.T) {
 				"CreatedAt time.Time",
 			}, []string{
 				"ALTER TABLE `user` ADD `created_at` DATETIME NOT NULL",
+			}},
+			{[]string{
+				"Age uint8 `migu:\"column:col_a\"`",
+				"CreatedAt time.Time",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `age` `col_a` TINYINT UNSIGNED NOT NULL",
+			}},
+			{[]string{
+				"Age uint8 `migu:\"column:col_b\"`",
+				"CreatedAt time.Time",
+			}, []string{
+				"ALTER TABLE `user` ADD `col_b` TINYINT UNSIGNED NOT NULL, DROP `col_a`",
+			}},
+			{[]string{
+				"Age uint8",
+				"Old uint8 `migu:\"column:col_b\"`",
+				"CreatedAt time.Time",
+			}, []string{
+				"ALTER TABLE `user` ADD `age` TINYINT UNSIGNED NOT NULL",
 			}},
 		} {
 			src := fmt.Sprintf("package migu_test\n" +
@@ -336,7 +355,7 @@ func testDiffWithSrc(t *testing.T, t1, s1, t2, s2 string) error {
 	if s1 == s2 {
 		expect = []string(nil)
 	} else {
-		expect = []string{"ALTER TABLE `user` MODIFY `a` " + s2}
+		expect = []string{"ALTER TABLE `user` CHANGE `a` `a` " + s2}
 	}
 	sort.Strings(actual)
 	sort.Strings(expect)
