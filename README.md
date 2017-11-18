@@ -19,8 +19,8 @@ package yourownpackagename
 
 //+migu
 type User struct {
-	Name string
-	Age  int
+    Name string
+    Age  int
 }
 ```
 
@@ -49,8 +49,8 @@ package yourownpackagename
 
 //+migu
 type User struct {
-	Name string
-	Age  uint
+    Name string
+    Age  uint
 }
 ```
 
@@ -145,10 +145,10 @@ import "time"
 
 //+migu
 type User struct {
-	Name string
+    Name string
 
-	_ time.Time `migu:"column:created_at"`
-	_ time.Time `migu:"column:updated_at"`
+    _ time.Time `migu:"column:created_at"`
+    _ time.Time `migu:"column:updated_at"`
 }
 ```
 
@@ -161,15 +161,15 @@ package model
 import "time"
 
 type Timestamp struct {
-	CreatedAt time.Time
-	UpdatedAt time.Time
+    CreatedAt time.Time
+    UpdatedAt time.Time
 }
 
 //+migu
 type User struct {
-	Name string
+    Name string
 
-	Timestamp
+    Timestamp
 }
 ```
 
@@ -194,18 +194,18 @@ package model
 import "time"
 
 type Timestamp struct {
-	CreatedAt time.Time
-	UpdatedAt time.Time
+    CreatedAt time.Time
+    UpdatedAt time.Time
 }
 
 //+migu
 type User struct {
-	Name string
+    Name string
 
-	Timestamp
+    Timestamp
 
-	_ time.Time `migu:"column:created_at"`
-	_ time.Time `migu:"column:updated_at"`
+    _ time.Time `migu:"column:created_at"`
+    _ time.Time `migu:"column:updated_at"`
 }
 ```
 
@@ -232,7 +232,7 @@ package model
 
 //+migu table:"guest"
 type User struct {
-	Name string
+    Name string
 }
 ```
 
@@ -253,7 +253,7 @@ package model
 
 //+migu option:"ENGINE=InnoDB ROW_FORMAT=DYNAMIC"
 type User struct {
-	Name string
+    Name string
 }
 ```
 
