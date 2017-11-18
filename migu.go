@@ -139,7 +139,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			for _, f := range fields {
 				switch {
 				case f.IsAdded():
-					migrations = append(migrations, fmt.Sprintf("ALTER TABLE %s ADD %s", tableName, d.Quote(f.new.Column)))
+					migrations = append(migrations, fmt.Sprintf("ALTER TABLE %s ADD %s", tableName, columnSQL(d, f.new)))
 				case f.IsDropped():
 					migrations = append(migrations, fmt.Sprintf("ALTER TABLE %s DROP %s", tableName, d.Quote(f.old.Column)))
 				case f.IsModified():

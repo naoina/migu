@@ -195,6 +195,48 @@ func TestDiff(t *testing.T) {
 			t.Fatalf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
 		}
 	})
+
+	t.Run("add new column", func(t *testing.T) {
+		before(t)
+		for _, v := range []struct {
+			columns []string
+			expect  []string
+		}{
+			{[]string{
+				"Age int",
+			}, []string{
+				"CREATE TABLE `user` (\n" +
+					"  `age` INT NOT NULL\n" +
+					")",
+			}},
+			{[]string{
+				"Age int",
+				"CreatedAt time.Time",
+			}, []string{
+				"ALTER TABLE `user` ADD `created_at` DATETIME NOT NULL",
+			}},
+		} {
+			src := fmt.Sprintf("package migu_test\n" +
+				"//+migu\n" +
+				"type User struct {\n" +
+				strings.Join(v.columns, "\n") + "\n" +
+				"}")
+			results, err := migu.Diff(db, "", src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual := results
+			expect := v.expect
+			if !reflect.DeepEqual(actual, expect) {
+				t.Fatalf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+			}
+			for _, q := range results {
+				if _, err := db.Exec(q); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	})
 }
 
 func TestDiffWithSrc(t *testing.T) {
