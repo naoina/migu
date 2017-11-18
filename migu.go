@@ -151,14 +151,17 @@ func makeCreateTableQueries(d dialect.Dialect, tableName string, t *table) []str
 		query += " " + t.Option
 	}
 	queries := []string{query}
-	indexMap := map[string][]string{}
-	for _, f := range t.Fields {
-		for _, index := range f.Indexes() {
-			indexMap[index] = append(indexMap[index], d.Quote(f.Column))
+	addIndexMap, _ := makeIndexMap(nil, t.Fields)
+	for name, index := range addIndexMap {
+		columns := make([]string, 0, len(index.Columns))
+		for _, c := range index.Columns {
+			columns = append(columns, d.Quote(c))
 		}
-	}
-	for name, columns := range indexMap {
-		queries = append(queries, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
+		if index.Unique {
+			queries = append(queries, fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
+		} else {
+			queries = append(queries, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
+		}
 	}
 	return queries
 }
@@ -202,18 +205,23 @@ func makeAlterTableQueries(d dialect.Dialect, tableName string, t *table, column
 		}
 	}
 	addIndexMap, dropIndexMap := makeIndexMap(oldFields, t.Fields)
-	for name, columns := range dropIndexMap {
+	for name, index := range dropIndexMap {
 		// If the column which has the index will be deleted, Migu will not delete the index related to the column
 		// because the index will be deleted when the column which related to the index will be deleted.
-		if _, ok := droppedColumn[columns[0]]; !ok {
+		if _, ok := droppedColumn[index.Columns[0]]; !ok {
 			dropSQLs = append(dropSQLs, fmt.Sprintf("DROP INDEX %s ON %s", d.Quote(name), tableName))
 		}
 	}
-	for name, columns := range addIndexMap {
-		for i := 0; i < len(columns); i++ {
-			columns[i] = d.Quote(columns[i])
+	for name, index := range addIndexMap {
+		columns := make([]string, 0, len(index.Columns))
+		for _, c := range index.Columns {
+			columns = append(columns, d.Quote(c))
 		}
-		modifySQLs = append(modifySQLs, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
+		if index.Unique {
+			modifySQLs = append(modifySQLs, fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
+		} else {
+			modifySQLs = append(modifySQLs, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
+		}
 	}
 	return append(dropSQLs, modifySQLs...), nil
 }
@@ -221,6 +229,11 @@ func makeAlterTableQueries(d dialect.Dialect, tableName string, t *table, column
 type table struct {
 	Fields []*field
 	Option string
+}
+
+type index struct {
+	Columns []string
+	Unique  bool
 }
 
 type field struct {
@@ -272,6 +285,13 @@ func (f *field) Indexes() []string {
 	return indexes
 }
 
+func (f *field) UniqueIndexes() []string {
+	if !f.Unique {
+		return nil
+	}
+	return []string{f.Column}
+}
+
 func (f *field) IsDifferent(another *field) bool {
 	if f == nil && another == nil {
 		return false
@@ -281,13 +301,14 @@ func (f *field) IsDifferent(another *field) bool {
 		f.Default != another.Default ||
 		f.Size != another.Size ||
 		f.Column != another.Column ||
-		f.Unique != another.Unique ||
 		f.Comment != another.Comment ||
 		f.AutoIncrement != another.AutoIncrement ||
 		f.PrimaryKey != another.PrimaryKey
 }
 
-func makeIndexMap(oldFields, newFields []*field) (addIndexMap, dropIndexMap map[string][]string) {
+func makeIndexMap(oldFields, newFields []*field) (addIndexMap, dropIndexMap map[string]*index) {
+	dropIndexMap = map[string]*index{}
+	addIndexMap = map[string]*index{}
 	m := make(map[string]*field, len(oldFields))
 	for _, f := range oldFields {
 		m[f.Column] = f
@@ -298,20 +319,37 @@ func makeIndexMap(oldFields, newFields []*field) (addIndexMap, dropIndexMap map[
 			oldField = &field{}
 		}
 		oindexes, nindexes := oldField.Indexes(), f.Indexes()
-		for _, index := range oindexes {
-			if !inStrings(nindexes, index) {
-				if dropIndexMap == nil {
-					dropIndexMap = make(map[string][]string, 1)
+		oldUniqueIndexes, newUniqueIndexes := oldField.UniqueIndexes(), f.UniqueIndexes()
+		for _, name := range oindexes {
+			if !inStrings(nindexes, name) {
+				if dropIndexMap[name] == nil {
+					dropIndexMap[name] = &index{Unique: false}
 				}
-				dropIndexMap[index] = append(dropIndexMap[index], oldField.Column)
+				dropIndexMap[name].Columns = append(dropIndexMap[name].Columns, oldField.Column)
 			}
 		}
-		for _, index := range nindexes {
-			if !inStrings(oindexes, index) {
-				if addIndexMap == nil {
-					addIndexMap = make(map[string][]string, 1)
+		for _, name := range oldUniqueIndexes {
+			if !inStrings(newUniqueIndexes, name) {
+				if dropIndexMap[name] == nil {
+					dropIndexMap[name] = &index{Unique: true}
 				}
-				addIndexMap[index] = append(addIndexMap[index], f.Column)
+				dropIndexMap[name].Columns = append(dropIndexMap[name].Columns, oldField.Column)
+			}
+		}
+		for _, name := range nindexes {
+			if !inStrings(oindexes, name) {
+				if addIndexMap[name] == nil {
+					addIndexMap[name] = &index{Unique: false}
+				}
+				addIndexMap[name].Columns = append(addIndexMap[name].Columns, f.Column)
+			}
+		}
+		for _, name := range newUniqueIndexes {
+			if !inStrings(oldUniqueIndexes, name) {
+				if addIndexMap[name] == nil {
+					addIndexMap[name] = &index{Unique: true}
+				}
+				addIndexMap[name].Columns = append(addIndexMap[name].Columns, f.Column)
 			}
 		}
 	}
@@ -616,9 +654,6 @@ func columnSQL(d dialect.Dialect, f *field) string {
 	}
 	if f.AutoIncrement && d.AutoIncrement() != "" {
 		column = append(column, d.AutoIncrement())
-	}
-	if f.Unique {
-		column = append(column, "UNIQUE")
 	}
 	if f.Comment != "" {
 		column = append(column, "COMMENT", d.QuoteString(f.Comment))

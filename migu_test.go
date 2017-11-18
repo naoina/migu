@@ -117,6 +117,39 @@ func TestDiff(t *testing.T) {
 			}, []string{
 				"DROP INDEX `age_created_at_index` ON `user`",
 			}},
+			{[]string{
+				"Age int `migu:\"unique\"`",
+				"CreatedAt time.Time",
+			}, []string{
+				"CREATE UNIQUE INDEX `age` ON `user` (`age`)",
+			}},
+			{[]string{
+				"Age int `migu:\"unique\"`",
+				"CreatedAt time.Time `migu:\"unique\"`",
+			}, []string{
+				"CREATE UNIQUE INDEX `created_at` ON `user` (`created_at`)",
+			}},
+			{[]string{
+				"Age int `migu:\"index\"`",
+				"CreatedAt time.Time `migu:\"unique\"`",
+			}, []string{
+				"DROP INDEX `age` ON `user`",
+				"CREATE INDEX `age` ON `user` (`age`)",
+			}},
+			{[]string{
+				"Age int `migu:\"unique\"`",
+				"CreatedAt time.Time",
+			}, []string{
+				"DROP INDEX `age` ON `user`",
+				"DROP INDEX `created_at` ON `user`",
+				"CREATE UNIQUE INDEX `age` ON `user` (`age`)",
+			}},
+			{[]string{
+				"Age int",
+				"CreatedAt time.Time",
+			}, []string{
+				"DROP INDEX `age` ON `user`",
+			}},
 		} {
 			src := fmt.Sprintf("package migu_test\n" +
 				"//+migu\n" +
@@ -137,6 +170,27 @@ func TestDiff(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+		}
+	})
+
+	t.Run("unique index at table creation", func(t *testing.T) {
+		src := fmt.Sprintf("package migu_test\n" +
+			"//+migu\n" +
+			"type User struct {\n" +
+			"	Age int `migu:\"unique\"`\n" +
+			"}")
+		actual, err := migu.Diff(db, "", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expect := []string{
+			"CREATE TABLE `user` (\n" +
+				"  `age` INT NOT NULL\n" +
+				")",
+			"CREATE UNIQUE INDEX `age` ON `user` (`age`)",
+		}
+		if !reflect.DeepEqual(actual, expect) {
+			t.Fatalf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
 		}
 	})
 }
