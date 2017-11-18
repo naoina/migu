@@ -215,7 +215,7 @@ type field struct {
 	Column        string
 	Comment       string
 	RawIndexes    []string
-	Unique        bool
+	RawUniques    []string
 	PrimaryKey    bool
 	AutoIncrement bool
 	Ignore        bool
@@ -259,10 +259,14 @@ func (f *field) Indexes() []string {
 }
 
 func (f *field) UniqueIndexes() []string {
-	if !f.Unique {
-		return nil
+	uniques := make([]string, 0, len(f.RawUniques))
+	for _, u := range f.RawUniques {
+		if u == "" {
+			u = f.Column
+		}
+		uniques = append(uniques, u)
 	}
-	return []string{f.Column}
+	return uniques
 }
 
 func (f *field) IsDifferent(another *field) bool {
@@ -711,7 +715,11 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 				f.RawIndexes = append(f.RawIndexes, "")
 			}
 		case tagUnique:
-			f.Unique = true
+			if len(optval) == 2 {
+				f.RawUniques = append(f.RawUniques, optval[1])
+			} else {
+				f.RawUniques = append(f.RawUniques, "")
+			}
 		case tagIgnore:
 			f.Ignore = true
 		case tagColumn:
@@ -787,7 +795,11 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 		}
 	}
 	if schema.hasUniqueKey() {
-		tags = append(tags, tagUnique)
+		if schema.IndexName == schema.ColumnName {
+			tags = append(tags, tagUnique)
+		} else {
+			tags = append(tags, fmt.Sprintf("%s:%s", tagUnique, schema.IndexName))
+		}
 	}
 	if schema.hasSize() {
 		if *schema.CharacterMaximumLength != defaultVarcharSize {

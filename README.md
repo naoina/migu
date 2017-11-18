@@ -113,6 +113,19 @@ Email string `migu:"index:name_email_index"`
 Email string `migu:"unique"`
 ```
 
+If you want to give another unique index name, specify the unique index name as follows.
+
+```go
+Email string `migu:"unique:email_unique_index"`
+```
+
+You can also define multiple-column unique indexes by specifying the same unique index name to multiple fields.
+
+```go
+Name  string `migu:"unique:name_email_unique_index"`
+Email string `migu:"unique:name_email_unique_index"`
+```
+
 #### DEFAULT
 
 ```go
