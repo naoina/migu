@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -66,6 +67,76 @@ func TestDiff(t *testing.T) {
 					t.Errorf(`2. migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
 				}
 			})
+		}
+	})
+
+	t.Run("index", func(t *testing.T) {
+		for _, v := range []struct {
+			columns []string
+			expect  []string
+		}{
+			{[]string{
+				"Age int `migu:\"index\"`",
+				"CreatedAt time.Time",
+			}, []string{
+				"CREATE TABLE `user` (\n" +
+					"  `age` INT NOT NULL,\n" +
+					"  `created_at` DATETIME NOT NULL\n" +
+					")",
+				"CREATE INDEX `age` ON `user` (`age`)",
+			}},
+			{[]string{
+				"Age int `migu:\"index\"`",
+				"CreatedAt time.Time `migu:\"index\"`",
+			}, []string{
+				"CREATE INDEX `created_at` ON `user` (`created_at`)",
+			}},
+			{[]string{
+				"Age int `migu:\"index:age_index\"`",
+				"CreatedAt time.Time `migu:\"index\"`",
+			}, []string{
+				"DROP INDEX `age` ON `user`",
+				"CREATE INDEX `age_index` ON `user` (`age`)",
+			}},
+			{[]string{
+				"Age int `migu:\"index:age_index\"`",
+				"CreatedAt time.Time",
+			}, []string{
+				"DROP INDEX `created_at` ON `user`",
+			}},
+			{[]string{
+				"Age int `migu:\"index:age_created_at_index\"`",
+				"CreatedAt time.Time `migu:\"index:age_created_at_index\"`",
+			}, []string{
+				"DROP INDEX `age_index` ON `user`",
+				"CREATE INDEX `age_created_at_index` ON `user` (`age`,`created_at`)",
+			}},
+			{[]string{
+				"Age int",
+				"CreatedAt time.Time",
+			}, []string{
+				"DROP INDEX `age_created_at_index` ON `user`",
+			}},
+		} {
+			src := fmt.Sprintf("package migu_test\n" +
+				"//+migu\n" +
+				"type User struct {\n" +
+				strings.Join(v.columns, "\n") + "\n" +
+				"}")
+			results, err := migu.Diff(db, "", src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual := results
+			expect := v.expect
+			if !reflect.DeepEqual(actual, expect) {
+				t.Fatalf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+			}
+			for _, q := range results {
+				if _, err := db.Exec(q); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
 	})
 }

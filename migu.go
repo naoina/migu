@@ -151,6 +151,15 @@ func makeCreateTableQueries(d dialect.Dialect, tableName string, t *table) []str
 		query += " " + t.Option
 	}
 	queries := []string{query}
+	indexMap := map[string][]string{}
+	for _, f := range t.Fields {
+		for _, index := range f.Indexes() {
+			indexMap[index] = append(indexMap[index], d.Quote(f.Column))
+		}
+	}
+	for name, columns := range indexMap {
+		queries = append(queries, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
+	}
 	return queries
 }
 
@@ -186,6 +195,26 @@ func makeAlterTableQueries(d dialect.Dialect, tableName string, t *table, column
 			modifySQLs = append(modifySQLs, fmt.Sprintf("ALTER TABLE %s %s", tableName, strings.Join(specs, ", ")))
 		}
 	}
+	droppedColumn := map[string]struct{}{}
+	for _, f := range fields {
+		if f.IsDropped() {
+			droppedColumn[f.old.Column] = struct{}{}
+		}
+	}
+	addIndexMap, dropIndexMap := makeIndexMap(oldFields, t.Fields)
+	for name, columns := range dropIndexMap {
+		// If the column which has the index will be deleted, Migu will not delete the index related to the column
+		// because the index will be deleted when the column which related to the index will be deleted.
+		if _, ok := droppedColumn[columns[0]]; !ok {
+			dropSQLs = append(dropSQLs, fmt.Sprintf("DROP INDEX %s ON %s", d.Quote(name), tableName))
+		}
+	}
+	for name, columns := range addIndexMap {
+		for i := 0; i < len(columns); i++ {
+			columns[i] = d.Quote(columns[i])
+		}
+		modifySQLs = append(modifySQLs, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
+	}
 	return append(dropSQLs, modifySQLs...), nil
 }
 
@@ -199,6 +228,7 @@ type field struct {
 	Type          string
 	Column        string
 	Comment       string
+	RawIndexes    []string
 	Unique        bool
 	PrimaryKey    bool
 	AutoIncrement bool
@@ -231,6 +261,16 @@ func newField(typeName string, f *ast.Field) (*field, error) {
 	return ret, nil
 }
 
+func (f *field) Indexes() []string {
+	indexes := make([]string, 0, len(f.RawIndexes))
+	for _, index := range f.RawIndexes {
+		if index == "" {
+			index = f.Column
+		}
+		indexes = append(indexes, index)
+	}
+	return indexes
+}
 
 func (f *field) IsDifferent(another *field) bool {
 	if f == nil && another == nil {
@@ -245,6 +285,37 @@ func (f *field) IsDifferent(another *field) bool {
 		f.Comment != another.Comment ||
 		f.AutoIncrement != another.AutoIncrement ||
 		f.PrimaryKey != another.PrimaryKey
+}
+
+func makeIndexMap(oldFields, newFields []*field) (addIndexMap, dropIndexMap map[string][]string) {
+	m := make(map[string]*field, len(oldFields))
+	for _, f := range oldFields {
+		m[f.Column] = f
+	}
+	for _, f := range newFields {
+		oldField := m[f.Column]
+		if oldField == nil {
+			oldField = &field{}
+		}
+		oindexes, nindexes := oldField.Indexes(), f.Indexes()
+		for _, index := range oindexes {
+			if !inStrings(nindexes, index) {
+				if dropIndexMap == nil {
+					dropIndexMap = make(map[string][]string, 1)
+				}
+				dropIndexMap[index] = append(dropIndexMap[index], oldField.Column)
+			}
+		}
+		for _, index := range nindexes {
+			if !inStrings(oindexes, index) {
+				if addIndexMap == nil {
+					addIndexMap = make(map[string][]string, 1)
+				}
+				addIndexMap[index] = append(addIndexMap[index], f.Column)
+			}
+		}
+	}
+	return addIndexMap, dropIndexMap
 }
 
 type modifiedField struct {
@@ -325,6 +396,7 @@ const (
 	tagDefault       = "default"
 	tagPrimaryKey    = "pk"
 	tagAutoIncrement = "autoincrement"
+	tagIndex         = "index"
 	tagUnique        = "unique"
 	tagSize          = "size"
 	tagColumn        = "column"
@@ -619,6 +691,12 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 			f.PrimaryKey = true
 		case tagAutoIncrement:
 			f.AutoIncrement = true
+		case tagIndex:
+			if len(optval) == 2 {
+				f.RawIndexes = append(f.RawIndexes, optval[1])
+			} else {
+				f.RawIndexes = append(f.RawIndexes, "")
+			}
 		case tagUnique:
 			f.Unique = true
 		case tagIgnore:
@@ -687,6 +765,13 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	}
 	if schema.hasAutoIncrement() {
 		tags = append(tags, tagAutoIncrement)
+	}
+	if schema.hasIndex() {
+		if schema.IndexName == schema.ColumnName {
+			tags = append(tags, tagIndex)
+		} else {
+			tags = append(tags, fmt.Sprintf("%s:%s", tagIndex, schema.IndexName))
+		}
 	}
 	if schema.hasUniqueKey() {
 		tags = append(tags, tagUnique)
@@ -794,8 +879,12 @@ func (schema *columnSchema) hasAutoIncrement() bool {
 	return schema.Extra == "auto_increment"
 }
 
+func (schema *columnSchema) hasIndex() bool {
+	return schema.IndexName != "" && !schema.hasPrimaryKey() && schema.NonUnique != 0
+}
+
 func (schema *columnSchema) hasUniqueKey() bool {
-	return schema.ColumnKey != "" && schema.IndexName != "" && !schema.hasPrimaryKey()
+	return schema.IndexName != "" && !schema.hasPrimaryKey() && schema.NonUnique == 0
 }
 
 func (schema *columnSchema) hasSize() bool {

@@ -88,6 +88,25 @@ ID int64 `migu:"pk"`
 ID int64 `migu:"autoincrement"`
 ```
 
+#### INDEX
+
+```go
+Email string `migu:"index"`
+```
+
+If you want to give another index name, specify the index name as follows.
+
+```go
+Email string `migu:"index:email_index"`
+```
+
+You can also define multiple-column indexes by specifying the same index name to multiple fields.
+
+```go
+Name  string `migu:"index:name_email_index"`
+Email string `migu:"index:name_email_index"`
+```
+
 #### UNIQUE INDEX
 
 ```go
