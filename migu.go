@@ -118,16 +118,75 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 	sort.Strings(names)
 	d := &dialect.MySQL{}
 	var migrations []string
+	var oldFields []*field
+	droppedColumn := map[string]struct{}{}
 	for _, name := range names {
 		tbl := structMap[name]
+		tableName := d.Quote(name)
 		if columns, ok := tableMap[name]; ok {
-			queries, err := makeAlterTableQueries(d, name, tbl, columns)
-			if err != nil {
-				return nil, err
+			for _, c := range columns {
+				oldFieldAST, err := c.fieldAST()
+				if err != nil {
+					return nil, err
+				}
+				f, err := newField(fmt.Sprint(oldFieldAST.Type), oldFieldAST)
+				if err != nil {
+					return nil, err
+				}
+				oldFields = append(oldFields, f)
 			}
-			migrations = append(migrations, queries...)
+			fields := makeAlterTableFields(oldFields, tbl.Fields)
+			for _, f := range fields {
+				switch {
+				case f.IsAdded():
+					migrations = append(migrations, fmt.Sprintf("ALTER TABLE %s ADD %s", tableName, d.Quote(f.new.Column)))
+				case f.IsDropped():
+					migrations = append(migrations, fmt.Sprintf("ALTER TABLE %s DROP %s", tableName, d.Quote(f.old.Column)))
+				case f.IsModified():
+					specs := make([]string, 0, 1)
+					if f.old.PrimaryKey != f.new.PrimaryKey && !f.new.PrimaryKey {
+						specs = append(specs, "DROP PRIMARY KEY")
+					}
+					specs = append(specs, fmt.Sprintf("MODIFY %s", columnSQL(d, f.new)))
+					migrations = append(migrations, fmt.Sprintf("ALTER TABLE %s %s", tableName, strings.Join(specs, ", ")))
+				}
+			}
+			for _, f := range fields {
+				if f.IsDropped() {
+					droppedColumn[f.old.Column] = struct{}{}
+				}
+			}
 		} else {
-			migrations = append(migrations, makeCreateTableQueries(d, name, tbl)...)
+			columns := make([]string, len(tbl.Fields))
+			for i, f := range tbl.Fields {
+				columns[i] = columnSQL(d, f)
+			}
+			query := fmt.Sprintf("CREATE TABLE %s (\n"+
+				"  %s\n"+
+				")", tableName, strings.Join(columns, ",\n  "))
+			if tbl.Option != "" {
+				query += " " + tbl.Option
+			}
+			migrations = append(migrations, query)
+		}
+		addIndexMap, dropIndexMap := makeIndexMap(oldFields, tbl.Fields)
+		for name, index := range dropIndexMap {
+			// If the column which has the index will be deleted, Migu will not delete the index related to the column
+			// because the index will be deleted when the column which related to the index will be deleted.
+			if _, ok := droppedColumn[index.Columns[0]]; !ok {
+				migrations = append(migrations, fmt.Sprintf("DROP INDEX %s ON %s", d.Quote(name), tableName))
+			}
+		}
+		for name, index := range addIndexMap {
+			columns := make([]string, 0, len(index.Columns))
+			for _, c := range index.Columns {
+				columns = append(columns, d.Quote(c))
+			}
+			if index.Unique {
+				migrations = append(migrations, fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
+			} else {
+				migrations = append(migrations, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
+			}
 		}
 		delete(structMap, name)
 		delete(tableMap, name)
@@ -136,94 +195,6 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		migrations = append(migrations, fmt.Sprintf(`DROP TABLE %s`, d.Quote(name)))
 	}
 	return migrations, nil
-}
-
-func makeCreateTableQueries(d dialect.Dialect, tableName string, t *table) []string {
-	tableName = d.Quote(tableName)
-	columns := make([]string, len(t.Fields))
-	for i, f := range t.Fields {
-		columns[i] = columnSQL(d, f)
-	}
-	query := fmt.Sprintf("CREATE TABLE %s (\n"+
-		"  %s\n"+
-		")", tableName, strings.Join(columns, ",\n  "))
-	if t.Option != "" {
-		query += " " + t.Option
-	}
-	queries := []string{query}
-	addIndexMap, _ := makeIndexMap(nil, t.Fields)
-	for name, index := range addIndexMap {
-		columns := make([]string, 0, len(index.Columns))
-		for _, c := range index.Columns {
-			columns = append(columns, d.Quote(c))
-		}
-		if index.Unique {
-			queries = append(queries, fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
-		} else {
-			queries = append(queries, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
-		}
-	}
-	return queries
-}
-
-func makeAlterTableQueries(d dialect.Dialect, tableName string, t *table, columns []*columnSchema) ([]string, error) {
-	tableName = d.Quote(tableName)
-	oldFields := make([]*field, 0, len(columns))
-	for _, c := range columns {
-		oldFieldAST, err := c.fieldAST()
-		if err != nil {
-			return nil, err
-		}
-		f, err := newField(fmt.Sprint(oldFieldAST.Type), oldFieldAST)
-		if err != nil {
-			return nil, err
-		}
-		oldFields = append(oldFields, f)
-	}
-	var modifySQLs []string
-	var dropSQLs []string
-	fields := makeAlterTableFields(oldFields, t.Fields)
-	for _, f := range fields {
-		switch {
-		case f.IsAdded():
-			modifySQLs = append(modifySQLs, fmt.Sprintf("ALTER TABLE %s ADD %s", tableName, d.Quote(f.new.Column)))
-		case f.IsDropped():
-			dropSQLs = append(dropSQLs, fmt.Sprintf("ALTER TABLE %s DROP %s", tableName, d.Quote(f.old.Column)))
-		case f.IsModified():
-			specs := make([]string, 0, 1)
-			if f.old.PrimaryKey != f.new.PrimaryKey && !f.new.PrimaryKey {
-				specs = append(specs, "DROP PRIMARY KEY")
-			}
-			specs = append(specs, fmt.Sprintf("MODIFY %s", columnSQL(d, f.new)))
-			modifySQLs = append(modifySQLs, fmt.Sprintf("ALTER TABLE %s %s", tableName, strings.Join(specs, ", ")))
-		}
-	}
-	droppedColumn := map[string]struct{}{}
-	for _, f := range fields {
-		if f.IsDropped() {
-			droppedColumn[f.old.Column] = struct{}{}
-		}
-	}
-	addIndexMap, dropIndexMap := makeIndexMap(oldFields, t.Fields)
-	for name, index := range dropIndexMap {
-		// If the column which has the index will be deleted, Migu will not delete the index related to the column
-		// because the index will be deleted when the column which related to the index will be deleted.
-		if _, ok := droppedColumn[index.Columns[0]]; !ok {
-			dropSQLs = append(dropSQLs, fmt.Sprintf("DROP INDEX %s ON %s", d.Quote(name), tableName))
-		}
-	}
-	for name, index := range addIndexMap {
-		columns := make([]string, 0, len(index.Columns))
-		for _, c := range index.Columns {
-			columns = append(columns, d.Quote(c))
-		}
-		if index.Unique {
-			modifySQLs = append(modifySQLs, fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
-		} else {
-			modifySQLs = append(modifySQLs, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", d.Quote(name), tableName, strings.Join(columns, ",")))
-		}
-	}
-	return append(dropSQLs, modifySQLs...), nil
 }
 
 type table struct {

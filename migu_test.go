@@ -30,8 +30,8 @@ func before(t *testing.T) {
 }
 
 func TestDiff(t *testing.T) {
-	before(t)
 	t.Run("idempotency", func(t *testing.T) {
+		before(t)
 		for _, v := range []struct {
 			column string
 		}{
@@ -71,6 +71,7 @@ func TestDiff(t *testing.T) {
 	})
 
 	t.Run("index", func(t *testing.T) {
+		before(t)
 		for _, v := range []struct {
 			columns []string
 			expect  []string
@@ -174,6 +175,7 @@ func TestDiff(t *testing.T) {
 	})
 
 	t.Run("unique index at table creation", func(t *testing.T) {
+		before(t)
 		src := fmt.Sprintf("package migu_test\n" +
 			"//+migu\n" +
 			"type User struct {\n" +
