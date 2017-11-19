@@ -311,6 +311,44 @@ func TestDiff(t *testing.T) {
 		}
 	})
 
+	t.Run("ALTER TABLE with multiple tables", func(t *testing.T) {
+		before(t)
+		if _, err := db.Exec("DROP TABLE IF EXISTS guest"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec("CREATE TABLE `user` (`age` INT NOT NULL, `gender` INT NOT NULL)"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec("CREATE TABLE `guest` (`age` INT NOT NULL, `sex` INT NOT NULL)"); err != nil {
+			t.Fatal(err)
+		}
+		src := "package migu_test\n" +
+			"//+migu\n" +
+			"type User struct {\n" +
+			"	Age int\n" +
+			"	Gender int\n" +
+			"}\n" +
+			"//+migu\n" +
+			"type Guest struct {\n" +
+			"	Age int\n" +
+			"	Sex int\n" +
+			"}"
+		results, err := migu.Diff(db, "", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual := results
+		expect := []string(nil)
+		if !reflect.DeepEqual(actual, expect) {
+			t.Fatalf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+		}
+		for _, q := range results {
+			if _, err := db.Exec(q); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+
 	t.Run("embedded field", func(t *testing.T) {
 		before(t)
 		src := fmt.Sprintf("package migu_test\n" +

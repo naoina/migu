@@ -136,11 +136,11 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 	sort.Strings(names)
 	d := &dialect.MySQL{}
 	var migrations []string
-	var oldFields []*field
 	droppedColumn := map[string]struct{}{}
 	for _, name := range names {
 		tbl := structMap[name]
 		tableName := d.Quote(name)
+		var oldFields []*field
 		if columns, ok := tableMap[name]; ok {
 			for _, c := range columns {
 				oldFieldAST, err := c.fieldAST()
