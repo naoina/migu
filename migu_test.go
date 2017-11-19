@@ -373,6 +373,61 @@ func TestDiff(t *testing.T) {
 			t.Fatalf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
 		}
 	})
+
+	t.Run("extra tag", func(t *testing.T) {
+		before(t)
+		for _, v := range []struct {
+			columns []string
+			expect  []string
+		}{
+			{[]string{
+				"CreatedAt time.Time `migu:\"extra:ON UPDATE CURRENT_TIMESTAMP\"`",
+			}, []string{
+				"CREATE TABLE `user` (\n" +
+					"  `created_at` DATETIME NOT NULL ON UPDATE CURRENT_TIMESTAMP\n" +
+					")",
+			}},
+			{[]string{
+				"CreatedAt time.Time `migu:\"extra:ON UPDATE CURRENT_TIMESTAMP\"`",
+				"UpdatedAt time.Time `migu:\"extra:ON UPDATE CURRENT_TIMESTAMP\"`",
+			}, []string{
+				"ALTER TABLE `user` ADD `updated_at` DATETIME NOT NULL ON UPDATE CURRENT_TIMESTAMP",
+			}},
+			{[]string{
+				"CreatedAt time.Time",
+				"UpdatedAt time.Time `migu:\"extra:ON UPDATE CURRENT_TIMESTAMP\"`",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `created_at` `created_at` DATETIME NOT NULL",
+			}},
+			{[]string{
+				"CreatedAt time.Time `migu:\"extra:ON UPDATE CURRENT_TIMESTAMP\"`",
+				"UpdatedAt time.Time",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `created_at` `created_at` DATETIME NOT NULL ON UPDATE CURRENT_TIMESTAMP, " +
+					"CHANGE `updated_at` `updated_at` DATETIME NOT NULL",
+			}},
+		} {
+			src := "package migu_test\n" +
+				"//+migu\n" +
+				"type User struct {\n" +
+				strings.Join(v.columns, "\n") + "\n" +
+				"}"
+			results, err := migu.Diff(db, "", src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual := results
+			expect := v.expect
+			if !reflect.DeepEqual(actual, expect) {
+				t.Fatalf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+			}
+			for _, q := range results {
+				if _, err := db.Exec(q); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	})
 }
 
 func TestDiffWithSrc(t *testing.T) {

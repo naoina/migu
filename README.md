@@ -152,6 +152,22 @@ You can specify the column name on the database.
 Body string `migu:"column:content"`
 ```
 
+### EXTRA
+
+If you want to add an extra clause to column definition such as `ON UPDATE CURRENT_TIMESTAMP`, you can use `extra` field tag.
+
+```go
+UpdatedAt time.Time `migu:"extra:ON UPDATE CURRENT_TIMESTAMP"`
+```
+
+The clause specified by `extra` field tag will be added to trailing the column definition like below.
+
+```sql
+CREATE TABLE `user` (
+  `updated_at` DATETIME NOT NULL ON UPDATE CURRENT_TIMESTAMP
+)
+```
+
 #### IGNORE
 
 ```go

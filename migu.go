@@ -271,6 +271,7 @@ type field struct {
 	Ignore        bool
 	Default       string
 	Size          uint64
+	Extra         string
 }
 
 func newField(typeName string, f *ast.Field) (*field, error) {
@@ -330,6 +331,7 @@ func (f *field) IsDifferent(another *field) bool {
 		f.Default != another.Default ||
 		f.Size != another.Size ||
 		f.Column != another.Column ||
+		f.Extra != another.Extra ||
 		f.Comment != another.Comment ||
 		f.AutoIncrement != another.AutoIncrement ||
 		f.PrimaryKey != another.PrimaryKey
@@ -484,6 +486,7 @@ const (
 	tagUnique        = "unique"
 	tagSize          = "size"
 	tagColumn        = "column"
+	tagExtra         = "extra"
 	tagIgnore        = "-"
 )
 
@@ -711,6 +714,9 @@ func columnSQL(d dialect.Dialect, f *field) string {
 	if f.AutoIncrement && d.AutoIncrement() != "" {
 		column = append(column, d.AutoIncrement())
 	}
+	if f.Extra != "" {
+		column = append(column, f.Extra)
+	}
 	if f.Comment != "" {
 		column = append(column, "COMMENT", d.QuoteString(f.Comment))
 	}
@@ -810,6 +816,11 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 				return err
 			}
 			f.Size = size
+		case tagExtra:
+			if len(optval) < 2 {
+				return fmt.Errorf("`extra` tag must specify the parameter")
+			}
+			f.Extra = optval[1]
 		default:
 			return fmt.Errorf("unknown option: `%s'", opt)
 		}
@@ -845,14 +856,15 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	if err != nil {
 		return nil, err
 	}
+	typ := types[0]
 	field := &ast.Field{
 		Names: []*ast.Ident{
 			ast.NewIdent(stringutil.ToUpperCamelCase(schema.ColumnName)),
 		},
-		Type: ast.NewIdent(types[0]),
+		Type: ast.NewIdent(typ),
 	}
 	var tags []string
-	if schema.ColumnDefault.Valid {
+	if schema.ColumnDefault.Valid && (schema.ColumnType != "datetime" || schema.ColumnDefault.String != "0000-00-00 00:00:00") {
 		tags = append(tags, tagDefault+":"+schema.ColumnDefault.String)
 	}
 	if schema.hasPrimaryKey() {
@@ -879,6 +891,9 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 		if *schema.CharacterMaximumLength != defaultVarcharSize {
 			tags = append(tags, fmt.Sprintf("%s:%d", tagSize, *schema.CharacterMaximumLength))
 		}
+	}
+	if schema.hasExtra() {
+		tags = append(tags, fmt.Sprintf("%s:%s", tagExtra, strings.ToUpper(schema.Extra)))
 	}
 	if len(tags) > 0 {
 		field.Tag = &ast.BasicLit{
@@ -976,6 +991,10 @@ func (schema *columnSchema) hasPrimaryKey() bool {
 
 func (schema *columnSchema) hasAutoIncrement() bool {
 	return schema.Extra == "auto_increment"
+}
+
+func (schema *columnSchema) hasExtra() bool {
+	return schema.Extra != "" && !schema.hasAutoIncrement()
 }
 
 func (schema *columnSchema) hasIndex() bool {
