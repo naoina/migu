@@ -310,6 +310,31 @@ func TestDiff(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("embedded field", func(t *testing.T) {
+		before(t)
+		src := fmt.Sprintf("package migu_test\n" +
+			"type Timestamp struct {\n" +
+			"	CreatedAt time.Time\n" +
+			"}\n" +
+			"//+migu\n" +
+			"type User struct {\n" +
+			"	Age int\n" +
+			"	Timestamp\n" +
+			"}")
+		actual, err := migu.Diff(db, "", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expect := []string{
+			"CREATE TABLE `user` (\n" +
+				"  `age` INT NOT NULL\n" +
+				")",
+		}
+		if !reflect.DeepEqual(actual, expect) {
+			t.Fatalf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+		}
+	})
 }
 
 func TestDiffWithSrc(t *testing.T) {

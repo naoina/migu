@@ -226,9 +226,11 @@ type field struct {
 
 func newField(typeName string, f *ast.Field) (*field, error) {
 	ret := &field{
-		Name: f.Names[0].Name,
 		Type: typeName,
 		Size: defaultVarcharSize,
+	}
+	if len(f.Names) > 0 && f.Names[0] != nil {
+		ret.Name = f.Names[0].Name
 	}
 	if f.Tag != nil {
 		s, err := strconv.Unquote(f.Tag.Value)
