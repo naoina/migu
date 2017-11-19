@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/naoina/migu"
@@ -61,45 +60,15 @@ func (s *sync) Execute(args []string) error {
 }
 
 func (s *sync) run(db *sql.DB, file string) error {
-	var sqls []string
-	var err error
+	var src interface{}
 	switch file {
 	case "", "-":
-		if sqls, err = migu.Diff(db, "", os.Stdin); err != nil {
-			return err
-		}
-	default:
-		info, err := os.Stat(file)
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			sqls, err = migu.Diff(db, file, nil)
-			break
-		}
-		if err := filepath.Walk(file, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			switch info.Name()[0] {
-			case '.', '_':
-				if info.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if info.IsDir() {
-				return nil
-			}
-			results, err := migu.Diff(db, path, nil)
-			if err != nil {
-				return err
-			}
-			sqls = append(sqls, results...)
-			return nil
-		}); err != nil {
-			return err
-		}
+		file = ""
+		src = os.Stdin
+	}
+	sqls, err := migu.Diff(db, file, src)
+	if err != nil {
+		return err
 	}
 	var tx *sql.Tx
 	if !s.DryRun {

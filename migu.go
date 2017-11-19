@@ -8,6 +8,8 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -78,9 +80,25 @@ func Sync(db *sql.DB, filename string, src interface{}) error {
 
 // Diff returns SQLs for schema synchronous between database and Go's struct.
 func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
-	structASTMap, err := makeStructASTMap(filename, src)
-	if err != nil {
-		return nil, err
+	var filenames []string
+	structASTMap := make(map[string]*structAST)
+	if src == nil {
+		files, err := collectFiles(filename)
+		if err != nil {
+			return nil, err
+		}
+		filenames = files
+	} else {
+		filenames = append(filenames, filename)
+	}
+	for _, filename := range filenames {
+		m, err := makeStructASTMap(filename, src)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range m {
+			structASTMap[k] = v
+		}
 	}
 	structMap := map[string]*table{}
 	for name, structAST := range structASTMap {
@@ -107,13 +125,13 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			structMap[name].Fields = append(structMap[name].Fields, f)
 		}
 	}
-	tableMap, err := getTableMap(db)
-	if err != nil {
-		return nil, err
-	}
 	names := make([]string, 0, len(structMap))
 	for name := range structMap {
 		names = append(names, name)
+	}
+	tableMap, err := getTableMap(db, names...)
+	if err != nil {
+		return nil, err
 	}
 	sort.Strings(names)
 	d := &dialect.MySQL{}
@@ -197,6 +215,37 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		migrations = append(migrations, fmt.Sprintf(`DROP TABLE %s`, d.Quote(name)))
 	}
 	return migrations, nil
+}
+
+func collectFiles(path string) ([]string, error) {
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		return []string{path}, nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	list, err := f.Readdir(-1)
+	f.Close()
+	if err != nil {
+		return nil, err
+	}
+	var filenames []string
+	for _, info := range list {
+		if info.IsDir() {
+			continue
+		}
+		name := info.Name()
+		switch name[0] {
+		case '.', '_':
+			continue
+		}
+		if !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		filenames = append(filenames, filepath.Join(path, name))
+	}
+	return filenames, nil
 }
 
 type table struct {
@@ -438,7 +487,7 @@ const (
 	tagIgnore        = "-"
 )
 
-func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
+func getTableMap(db *sql.DB, tables ...string) (map[string][]*columnSchema, error) {
 	dbname, err := getCurrentDBName(db)
 	if err != nil {
 		return nil, err
@@ -447,7 +496,7 @@ func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
 	if err != nil {
 		return nil, err
 	}
-	query := strings.Join([]string{
+	parts := []string{
 		"SELECT",
 		"  TABLE_NAME,",
 		"  COLUMN_NAME,",
@@ -464,9 +513,19 @@ func getTableMap(db *sql.DB) (map[string][]*columnSchema, error) {
 		"  COLUMN_COMMENT",
 		"FROM information_schema.COLUMNS",
 		"WHERE TABLE_SCHEMA = ?",
-		"ORDER BY TABLE_NAME, ORDINAL_POSITION",
-	}, "\n")
-	rows, err := db.Query(query, dbname)
+	}
+	args := []interface{}{dbname}
+	if len(tables) > 0 {
+		placeholder := strings.Repeat(",?", len(tables))
+		placeholder = placeholder[1:] // truncate the heading comma.
+		parts = append(parts, fmt.Sprintf("AND TABLE_NAME IN (%s)", placeholder))
+		for _, t := range tables {
+			args = append(args, t)
+		}
+	}
+	parts = append(parts, "ORDER BY TABLE_NAME, ORDINAL_POSITION")
+	query := strings.Join(parts, "\n")
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
