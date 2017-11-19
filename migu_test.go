@@ -457,9 +457,9 @@ func TestDiffWithSrc(t *testing.T) {
 		"string":          "VARCHAR(255) NOT NULL",
 		"*string":         "VARCHAR(255)",
 		"sql.NullString":  "VARCHAR(255)",
-		"bool":            "TINYINT NOT NULL",
-		"*bool":           "TINYINT",
-		"sql.NullBool":    "TINYINT",
+		"bool":            "TINYINT(1) NOT NULL",
+		"*bool":           "TINYINT(1)",
+		"sql.NullBool":    "TINYINT(1)",
 		"float32":         "DOUBLE NOT NULL",
 		"float64":         "DOUBLE NOT NULL",
 		"*float32":        "DOUBLE",
@@ -842,6 +842,24 @@ func TestFprint(t *testing.T) {
 			"//+migu\n" +
 			"type User struct {\n" +
 			"	Name *string\n" +
+			"}\n\n",
+		},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"  Active BOOL NOT NULL\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	Active bool\n" +
+			"}\n\n",
+		},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"  Active BOOL\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	Active *bool\n" +
 			"}\n\n",
 		},
 	} {

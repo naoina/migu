@@ -30,8 +30,7 @@ var (
 	sameTypeMap = func() map[string][]string {
 		m := map[string][]string{}
 		for _, types := range [][]string{
-			{"*int8", "*bool", "sql.NullBool"},
-			{"int8", "bool"},
+			{"*bool", "sql.NullBool"},
 			{"*uint", "*uint32"},
 			{"uint", "uint32"},
 			{"*int", "*int32"},
@@ -920,10 +919,16 @@ func (schema *columnSchema) GoFieldTypes() ([]string, error) {
 			}
 			return []string{"uint8"}, nil
 		}
-		if schema.isNullable() {
-			return []string{"*int8", "*bool", "sql.NullBool"}, nil
+		if schema.ColumnType == "tinyint(1)" {
+			if schema.isNullable() {
+				return []string{"*bool", "sql.NullBool"}, nil
+			}
+			return []string{"bool"}, nil
 		}
-		return []string{"int8", "bool"}, nil
+		if schema.isNullable() {
+			return []string{"*int8"}, nil
+		}
+		return []string{"int8"}, nil
 	case "smallint":
 		if schema.isUnsigned() {
 			if schema.isNullable() {
