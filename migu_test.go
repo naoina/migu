@@ -805,46 +805,45 @@ func TestFprint(t *testing.T) {
 		sqls   []string
 		expect string
 	}{
-		{[]string{`
-CREATE TABLE user (
-  name VARCHAR(255)
-)`}, `//+migu
-type User struct {
-	Name *string
-}
-
-`},
-		{[]string{`
-CREATE TABLE user (
-  name VARCHAR(255),
-  age  INT
-)`}, `//+migu
-type User struct {
-	Name *string
-	Age  *int
-}
-
-`},
-		{[]string{`
-CREATE TABLE user (
-  name VARCHAR(255)
-)`, `
-
-CREATE TABLE post (
-  title   VARCHAR(255),
-  content VARCHAR(255)
-)`}, `//+migu
-type Post struct {
-	Title   *string
-	Content *string
-}
-
-//+migu
-type User struct {
-	Name *string
-}
-
-`},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"  name VARCHAR(255)\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	Name *string\n" +
+			"}\n\n",
+		},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"  name VARCHAR(255),\n" +
+				"  age  INT\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	Name *string\n" +
+			"	Age  *int\n" +
+			"}\n\n",
+		},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"  name VARCHAR(255)\n" +
+				")",
+			"CREATE TABLE post (\n" +
+				"  title   VARCHAR(255),\n" +
+				"  content VARCHAR(255)\n" +
+				")",
+		}, "//+migu\n" +
+			"type Post struct {\n" +
+			"	Title   *string\n" +
+			"	Content *string\n" +
+			"}\n" +
+			"\n" +
+			"//+migu\n" +
+			"type User struct {\n" +
+			"	Name *string\n" +
+			"}\n\n",
+		},
 	} {
 		v := v
 		func() {
