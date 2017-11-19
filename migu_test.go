@@ -27,6 +27,9 @@ func before(t *testing.T) {
 	if _, err := db.Exec(`DROP TABLE IF EXISTS user`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec("DROP TABLE IF EXISTS guest"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestDiff(t *testing.T) {
@@ -313,9 +316,6 @@ func TestDiff(t *testing.T) {
 
 	t.Run("ALTER TABLE with multiple tables", func(t *testing.T) {
 		before(t)
-		if _, err := db.Exec("DROP TABLE IF EXISTS guest"); err != nil {
-			t.Fatal(err)
-		}
 		if _, err := db.Exec("CREATE TABLE `user` (`age` INT NOT NULL, `gender` INT NOT NULL)"); err != nil {
 			t.Fatal(err)
 		}
