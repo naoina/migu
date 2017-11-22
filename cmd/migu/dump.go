@@ -38,7 +38,7 @@ func (d *dump) Execute(args []string) error {
 			err: fmt.Errorf("too many arguments"),
 		}
 	}
-	db, err := database(d.Host, d.User, d.Password, dbname)
+	db, err := database(dbname, d.GeneralOption)
 	if err != nil {
 		return err
 	}

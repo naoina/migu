@@ -48,7 +48,7 @@ func (s *sync) Execute(args []string) error {
 			err: fmt.Errorf("too many arguments"),
 		}
 	}
-	db, err := database(s.Host, s.User, s.Password, dbname)
+	db, err := database(dbname, s.GeneralOption)
 	if err != nil {
 		return err
 	}

@@ -103,31 +103,31 @@ func run(args []string) error {
 	return nil
 }
 
-func database(host, user, password, dbname string) (db *sql.DB, err error) {
-	if user == "" {
-		if user = os.Getenv("USERNAME"); user == "" {
-			if user = os.Getenv("USER"); user == "" {
+func database(dbname string, opt GeneralOption) (db *sql.DB, err error) {
+	if opt.User == "" {
+		if opt.User = os.Getenv("USERNAME"); opt.User == "" {
+			if opt.User = os.Getenv("USER"); opt.User == "" {
 				return nil, fmt.Errorf("user is not specified and current user cannot be detected")
 			}
 		}
 	}
-	dsn := []byte(user)
-	if password != "" {
-		if password == "\x00" {
+	dsn := []byte(opt.User)
+	if opt.Password != "" {
+		if opt.Password == "\x00" {
 			fmt.Printf("Enter password: ")
 			p, err := gopass.GetPasswd()
 			if err != nil {
 				return nil, err
 			}
-			password = string(p)
+			opt.Password = string(p)
 		}
-		dsn = append(append(dsn, ':'), password...)
+		dsn = append(append(dsn, ':'), opt.Password...)
 	}
 	if len(dsn) > 0 {
 		dsn = append(dsn, '@')
 	}
-	if host != "" {
-		dsn = append(append(append(dsn, "tcp("...), host...), ')')
+	if opt.Host != "" {
+		dsn = append(append(append(dsn, "tcp("...), opt.Host...), ')')
 	}
 	dsn = append(append(dsn, '/'), dbname...)
 	return sql.Open("mysql", string(dsn))
