@@ -862,6 +862,17 @@ func TestFprint(t *testing.T) {
 			"	Active *bool\n" +
 			"}\n\n",
 		},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"  created_at DATETIME NOT NULL\n" +
+				")",
+		}, "import \"time\"\n" +
+			"\n" +
+			"//+migu\n" +
+			"type User struct {\n" +
+			"	CreatedAt time.Time\n" +
+			"}\n\n",
+		},
 	} {
 		v := v
 		func() {

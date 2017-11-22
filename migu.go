@@ -470,6 +470,7 @@ func Fprint(output io.Writer, db *sql.DB) error {
 		if err != nil {
 			return err
 		}
+		fmt.Fprintln(output, commentPrefix+marker)
 		if err := fprintln(output, s); err != nil {
 			return err
 		}
@@ -620,7 +621,6 @@ func formatDefault(d dialect.Dialect, t, def string) string {
 }
 
 func fprintln(output io.Writer, decl ast.Decl) error {
-	fmt.Fprintln(output, commentPrefix+marker)
 	if err := format.Node(output, token.NewFileSet(), decl); err != nil {
 		return err
 	}
