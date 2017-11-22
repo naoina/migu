@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	"github.com/howeyc/gopass"
 	"github.com/jessevdk/go-flags"
 )
@@ -104,33 +104,29 @@ func run(args []string) error {
 }
 
 func database(dbname string, opt GeneralOption) (db *sql.DB, err error) {
-	if opt.User == "" {
-		if opt.User = os.Getenv("USERNAME"); opt.User == "" {
-			if opt.User = os.Getenv("USER"); opt.User == "" {
+	config := mysql.NewConfig()
+	config.User = opt.User
+	if config.User == "" {
+		if config.User = os.Getenv("USERNAME"); config.User == "" {
+			if config.User = os.Getenv("USER"); config.User == "" {
 				return nil, fmt.Errorf("user is not specified and current user cannot be detected")
 			}
 		}
 	}
-	dsn := []byte(opt.User)
-	if opt.Password != "" {
-		if opt.Password == "\x00" {
+	config.Passwd = opt.Password
+	if config.Passwd != "" {
+		if config.Passwd == "\x00" {
 			fmt.Printf("Enter password: ")
 			p, err := gopass.GetPasswd()
 			if err != nil {
 				return nil, err
 			}
-			opt.Password = string(p)
+			config.Passwd = string(p)
 		}
-		dsn = append(append(dsn, ':'), opt.Password...)
 	}
-	if len(dsn) > 0 {
-		dsn = append(dsn, '@')
-	}
-	if opt.Host != "" {
-		dsn = append(append(append(dsn, "tcp("...), opt.Host...), ')')
-	}
-	dsn = append(append(dsn, '/'), dbname...)
-	return sql.Open("mysql", string(dsn))
+	config.Addr = opt.Host
+	config.DBName = dbname
+	return sql.Open("mysql", config.FormatDSN())
 }
 
 func newParser(option interface{}) (*flags.Parser, error) {
