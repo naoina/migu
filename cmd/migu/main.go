@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 
@@ -36,6 +37,7 @@ type GeneralOption struct {
 	User     string `short:"u" long:"user"`
 	Host     string `short:"h" long:"host"`
 	Password string `short:"p" long:"password" optional:"true" optional-value:"\x00"`
+	Port     uint16 `short:"P" long:"port"`
 	Protocol string `long:"protocol" choice:"tcp" choice:"socket" default:"tcp"`
 	Help     bool   `long:"help"`
 }
@@ -47,6 +49,7 @@ func (o *GeneralOption) Usage() string {
 		"  -u, --user=NAME        User for login to database if not current user\n" +
 		"  -p, --password[=PASS]  Password to use when connecting to server.\n" +
 		"                         If password is not given, it's asked from the tty\n" +
+		"  -P, --port=#           Port number to use for connection\n" +
 		"      --protocol=name    The protocol to use for connection (tcp, socket)\n" +
 		"      --help             Display this help and exit\n"
 }
@@ -133,6 +136,9 @@ func database(dbname string, opt GeneralOption) (db *sql.DB, err error) {
 	}
 	config.Net = protocolMap[opt.Protocol]
 	config.Addr = opt.Host
+	if opt.Port > 0 {
+		config.Addr = net.JoinHostPort(config.Addr, fmt.Sprintf("%d", opt.Port))
+	}
 	config.DBName = dbname
 	return sql.Open("mysql", config.FormatDSN())
 }
