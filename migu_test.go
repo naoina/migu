@@ -801,6 +801,7 @@ func TestDiffDropTable(t *testing.T) {
 }
 
 func TestFprint(t *testing.T) {
+	before(t)
 	for _, v := range []struct {
 		sqls   []string
 		expect string
@@ -871,6 +872,15 @@ func TestFprint(t *testing.T) {
 			"//+migu\n" +
 			"type User struct {\n" +
 			"	CreatedAt time.Time\n" +
+			"}\n\n",
+		},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"  uuid CHAR(36) NOT NULL\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	UUID string `migu:\"size:36\"`\n" +
 			"}\n\n",
 		},
 	} {

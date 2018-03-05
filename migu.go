@@ -962,7 +962,7 @@ func (schema *columnSchema) GoFieldTypes() ([]string, error) {
 			return []string{"*int64", "sql.NullInt64"}, nil
 		}
 		return []string{"int64"}, nil
-	case "varchar", "text", "mediumtext", "longtext":
+	case "varchar", "text", "mediumtext", "longtext", "char":
 		if schema.isNullable() {
 			return []string{"*string", "sql.NullString"}, nil
 		}
@@ -1011,5 +1011,5 @@ func (schema *columnSchema) hasUniqueKey() bool {
 }
 
 func (schema *columnSchema) hasSize() bool {
-	return schema.DataType == "varchar" && schema.CharacterMaximumLength != nil
+	return (schema.DataType == "varchar" || schema.DataType == "char") && schema.CharacterMaximumLength != nil
 }
