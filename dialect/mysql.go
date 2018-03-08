@@ -46,6 +46,8 @@ func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ st
 		return "DOUBLE", true
 	case "time.Time":
 		return "DATETIME", null
+	case "mysql.NullTime":
+		return "DATETIME", true
 	default:
 		return "VARCHAR(255)", true
 	}
