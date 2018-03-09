@@ -39,7 +39,7 @@ var (
 			{"*string", "sql.NullString"},
 			{"*float32", "*float64", "sql.NullFloat64"},
 			{"float32", "float64"},
-			{"*time.Time", "mysql.NullTime"},
+			{"*time.Time", "mysql.NullTime", "gorp.NullTime"},
 		} {
 			for _, t := range types {
 				m[t] = types
