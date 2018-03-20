@@ -1,8 +1,8 @@
 language: go
 go:
-  - 1.9
-  - 1.10
-  - tip
+  - "1.9"
+  - "1.10"
+  - "tip"
 install:
   - go get -v github.com/go-sql-driver/mysql
   - go get -v ./...
