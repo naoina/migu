@@ -82,6 +82,13 @@ You can specify the detailed definition of the column by some struct field tags.
 ID int64 `migu:"pk"`
 ```
 
+You can specify `pk` struct field tag to multiple field to define the multiple-column primary key.
+
+```go
+UserID    int64 `migu:"pk"`
+ProfileID int64 `migu:"pk"`
+```
+
 #### AUTOINCREMENT
 
 ```go

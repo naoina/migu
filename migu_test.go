@@ -73,6 +73,88 @@ func TestDiff(t *testing.T) {
 		}
 	})
 
+	t.Run("single primary key", func(t *testing.T) {
+		before(t)
+		src := strings.Join([]string{
+			"package migu_test",
+			"//+migu",
+			"type User struct {",
+			"	ID uint64 `migu:\"pk\"`",
+			"}",
+		}, "\n")
+		results, err := migu.Diff(db, "", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var actual interface{} = results
+		var expect interface{} = []string{
+			strings.Join([]string{
+				"CREATE TABLE `user` (",
+				"  `id` BIGINT UNSIGNED NOT NULL,",
+				"  PRIMARY KEY (`id`)",
+				")",
+			}, "\n"),
+		}
+		if !reflect.DeepEqual(actual, expect) {
+			t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+		}
+		for _, query := range results {
+			if _, err := db.Exec(query); err != nil {
+				t.Fatal(err)
+			}
+		}
+		actual, err = migu.Diff(db, "", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expect = []string(nil)
+		if !reflect.DeepEqual(actual, expect) {
+			t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+		}
+	})
+
+	t.Run("multiple-column primary key", func(t *testing.T) {
+		before(t)
+		src := strings.Join([]string{
+			"package migu_test",
+			"//+migu",
+			"type User struct {",
+			"	UserID uint64 `migu:\"pk\"`",
+			"	ProfileID uint64 `migu:\"pk\"`",
+			"}",
+		}, "\n")
+		results, err := migu.Diff(db, "", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var actual interface{} = results
+		var expect interface{} = []string{
+			strings.Join([]string{
+				"CREATE TABLE `user` (",
+				"  `user_id` BIGINT UNSIGNED NOT NULL,",
+				"  `profile_id` BIGINT UNSIGNED NOT NULL,",
+				"  PRIMARY KEY (`user_id`, `profile_id`)",
+				")",
+			}, "\n"),
+		}
+		if !reflect.DeepEqual(actual, expect) {
+			t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+		}
+		for _, query := range results {
+			if _, err := db.Exec(query); err != nil {
+				t.Fatal(err)
+			}
+		}
+		actual, err = migu.Diff(db, "", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expect = []string(nil)
+		if !reflect.DeepEqual(actual, expect) {
+			t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+		}
+	})
+
 	t.Run("index", func(t *testing.T) {
 		before(t)
 		for _, v := range []struct {

@@ -162,11 +162,17 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 				case f.IsDropped():
 					specs = append(specs, fmt.Sprintf("DROP %s", d.Quote(f.old.Column)))
 				case f.IsModified():
-					if f.old.PrimaryKey != f.new.PrimaryKey && !f.new.PrimaryKey {
-						specs = append(specs, "DROP PRIMARY KEY")
-					}
 					specs = append(specs, fmt.Sprintf("CHANGE %s %s", d.Quote(f.old.Column), columnSQL(d, f.new)))
 				}
+			}
+			if pkColumns, changed := makePrimaryKeyColumns(oldFields, tbl.Fields); len(pkColumns) > 0 {
+				if changed {
+					specs = append(specs, "DROP PRIMARY KEY")
+				}
+				for i, c := range pkColumns {
+					pkColumns[i] = d.Quote(c)
+				}
+				specs = append(specs, fmt.Sprintf("ADD PRIMARY KEY (%s)", strings.Join(pkColumns, ", ")))
 			}
 			if len(specs) > 0 {
 				migrations = append(migrations, fmt.Sprintf("ALTER TABLE %s %s", tableName, strings.Join(specs, ", ")))
@@ -180,6 +186,12 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			columns := make([]string, len(tbl.Fields))
 			for i, f := range tbl.Fields {
 				columns[i] = columnSQL(d, f)
+			}
+			if pkColumns, _ := makePrimaryKeyColumns(oldFields, tbl.Fields); len(pkColumns) > 0 {
+				for i, c := range pkColumns {
+					pkColumns[i] = d.Quote(c)
+				}
+				columns = append(columns, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(pkColumns, ", ")))
 			}
 			query := fmt.Sprintf("CREATE TABLE %s (\n"+
 				"  %s\n"+
@@ -333,8 +345,33 @@ func (f *field) IsDifferent(another *field) bool {
 		f.Column != another.Column ||
 		f.Extra != another.Extra ||
 		f.Comment != another.Comment ||
-		f.AutoIncrement != another.AutoIncrement ||
-		f.PrimaryKey != another.PrimaryKey
+		f.AutoIncrement != another.AutoIncrement
+}
+
+func makePrimaryKeyColumns(oldFields, newFields []*field) (pkColumns []string, changed bool) {
+	for _, f := range newFields {
+		if f.PrimaryKey {
+			pkColumns = append(pkColumns, f.Column)
+		}
+	}
+	m := map[string]struct{}{}
+	for _, f := range oldFields {
+		if f.PrimaryKey {
+			m[f.Column] = struct{}{}
+		}
+	}
+	if len(m) != len(pkColumns) {
+		if len(m) == 0 {
+			return pkColumns, false
+		}
+		return pkColumns, true
+	}
+	for _, pk := range pkColumns {
+		if _, exists := m[pk]; !exists {
+			return pkColumns, true
+		}
+	}
+	return nil, false
 }
 
 func makeIndexes(oldFields, newFields []*field) (addIndexes, dropIndexes []*index) {
@@ -707,9 +744,6 @@ func columnSQL(d dialect.Dialect, f *field) string {
 	}
 	if f.Default != "" {
 		column = append(column, "DEFAULT", formatDefault(d, f.Type, f.Default))
-	}
-	if f.PrimaryKey {
-		column = append(column, "PRIMARY KEY")
 	}
 	if f.AutoIncrement && d.AutoIncrement() != "" {
 		column = append(column, d.AutoIncrement())
