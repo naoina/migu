@@ -166,7 +166,7 @@ func main() {
 		os.Exit(0)
 	}
 	if err := run(args); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
