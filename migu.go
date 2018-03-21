@@ -36,7 +36,7 @@ var (
 			{"*int", "*int32"},
 			{"int", "int32"},
 			{"*int64", "sql.NullInt64"},
-			{"*string", "sql.NullString"},
+			{"*string", "sql.NullString", "[]byte"},
 			{"*float32", "*float64", "sql.NullFloat64"},
 			{"float32", "float64"},
 			{"*time.Time", "mysql.NullTime", "gorp.NullTime"},
@@ -731,6 +731,12 @@ func detectTypeName(n ast.Node) (string, error) {
 			return "", err
 		}
 		return "*" + name, nil
+	case *ast.ArrayType:
+		name, err := detectTypeName(t.Elt)
+		if err != nil {
+			return "", err
+		}
+		return "[]" + name, nil
 	default:
 		return "", fmt.Errorf("migu: BUG: unknown type %T", t)
 	}
@@ -999,9 +1005,9 @@ func (schema *columnSchema) GoFieldTypes() ([]string, error) {
 		return []string{"int64"}, nil
 	case "varchar", "text", "mediumtext", "longtext", "char":
 		if schema.isNullable() {
-			return []string{"*string", "sql.NullString"}, nil
+			return []string{"*string", "sql.NullString", "[]byte"}, nil
 		}
-		return []string{"string"}, nil
+		return []string{"string", "[]byte"}, nil
 	case "datetime":
 		if schema.isNullable() {
 			return []string{"*time.Time"}, nil

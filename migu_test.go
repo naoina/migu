@@ -538,6 +538,7 @@ func TestDiffWithSrc(t *testing.T) {
 		"sql.NullInt64":   "BIGINT",
 		"string":          "VARCHAR(255) NOT NULL",
 		"*string":         "VARCHAR(255)",
+		"[]byte":          "VARCHAR(255)",
 		"sql.NullString":  "VARCHAR(255)",
 		"bool":            "TINYINT(1) NOT NULL",
 		"*bool":           "TINYINT(1)",
