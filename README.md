@@ -30,7 +30,7 @@ Second, you enter the following commands to execute the first migration.
 
 ```
 % mysqladmin -u root create migu_test
-% migu -u root sync migu_test schema.go
+% migu sync -u root migu_test schema.go
 % mysql -u root migu_test -e 'desc user'
 +-------+--------------+------+-----+---------+-------+
 | Field | Type         | Null | Key | Default | Extra |
@@ -57,7 +57,7 @@ type User struct {
 Then, run `migu sync` command again.
 
 ```
-% migu -u root sync migu_test schema.go
+% migu sync -u root migu_test schema.go
 % mysql -u root migu_test -e 'desc user'
 +-------+------------------+------+-----+---------+-------+
 | Field | Type             | Null | Key | Default | Extra |
