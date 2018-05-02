@@ -73,9 +73,9 @@ func (u *usageError) Error() string {
 	return fmt.Sprintf("%v\n%v", u.err, u.usage)
 }
 
-func run(args []string) error {
+func selectCommand(args []string) (Command, error) {
 	if len(args) < 1 {
-		return &usageError{
+		return nil, &usageError{
 			usage: usage,
 			err:   fmt.Errorf("too few arguments"),
 		}
@@ -87,30 +87,12 @@ func run(args []string) error {
 	case "dump":
 		cmd = &dump{}
 	default:
-		return &usageError{
+		return nil, &usageError{
 			usage: usage,
 			err:   fmt.Errorf("unknown command: %s", c),
 		}
 	}
-	parser, err := newParser(cmd)
-	if err != nil {
-		return err
-	}
-	args, err = parser.ParseArgs(args[1:])
-	if err != nil {
-		return err
-	}
-	if cmd.ShowHelp() {
-		fmt.Fprintln(os.Stderr, cmd.Usage())
-		return nil
-	}
-	if err := cmd.Execute(args); err != nil {
-		if err, ok := err.(*usageError); ok && err.usage == "" {
-			err.usage = cmd.Usage()
-		}
-		return err
-	}
-	return nil
+	return cmd, nil
 }
 
 func database(dbname string, opt GeneralOption) (db *sql.DB, err error) {
@@ -164,7 +146,28 @@ func main() {
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(0)
 	}
-	if err := run(args); err != nil {
+	cmd, err := selectCommand(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	parser, err = newParser(cmd)
+	if err != nil {
+		panic(err)
+	}
+	args, err = parser.ParseArgs(args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, usage)
+		os.Exit(1)
+	}
+	if cmd.ShowHelp() {
+		fmt.Fprintln(os.Stderr, cmd.Usage())
+		os.Exit(0)
+	}
+	if err := cmd.Execute(args); err != nil {
+		if err, ok := err.(*usageError); ok && err.usage == "" {
+			err.usage = cmd.Usage()
+		}
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
