@@ -157,7 +157,7 @@ func main() {
 	}
 	args, err = parser.ParseArgs(args[1:])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, usage)
+		fmt.Fprintln(os.Stderr, cmd.Usage())
 		os.Exit(1)
 	}
 	if cmd.ShowHelp() {
