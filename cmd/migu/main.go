@@ -126,8 +126,7 @@ func database(dbname string, opt GeneralOption) (db *sql.DB, err error) {
 	config.Passwd = opt.Password
 	if config.Passwd != "" {
 		if config.Passwd == "\x00" {
-			fmt.Printf("Enter password: ")
-			p, err := gopass.GetPasswd()
+			p, err := gopass.GetPasswdPrompt("Enter password: ", false, os.Stdin, os.Stderr)
 			if err != nil {
 				return nil, err
 			}
