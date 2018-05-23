@@ -159,7 +159,7 @@ You can specify the column name on the database.
 Body string `migu:"column:content"`
 ```
 
-### EXTRA
+#### EXTRA
 
 If you want to add an extra clause to column definition such as `ON UPDATE CURRENT_TIMESTAMP`, you can use `extra` field tag.
 
