@@ -1015,9 +1015,9 @@ func (schema *columnSchema) GoFieldTypes() ([]string, error) {
 		return []string{"time.Time"}, nil
 	case "double":
 		if schema.isNullable() {
-			return []string{"*float32", "*float64", "sql.NullFloat64"}, nil
+			return []string{"*float64", "sql.NullFloat64", "*float32"}, nil
 		}
-		return []string{"float32", "float64"}, nil
+		return []string{"float64", "float32"}, nil
 	default:
 		return nil, fmt.Errorf("BUG: unexpected data type: %s", schema.DataType)
 	}
