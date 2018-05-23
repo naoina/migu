@@ -966,6 +966,15 @@ func TestFprint(t *testing.T) {
 			"	UUID string `migu:\"size:36\"`\n" +
 			"}\n\n",
 		},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"balance DECIMAL(65,2) NOT NULL\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	Balance float64\n" +
+			"}\n\n",
+		},
 	} {
 		v := v
 		func() {

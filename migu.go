@@ -1013,7 +1013,7 @@ func (schema *columnSchema) GoFieldTypes() ([]string, error) {
 			return []string{"*time.Time"}, nil
 		}
 		return []string{"time.Time"}, nil
-	case "double":
+	case "double", "decimal":
 		if schema.isNullable() {
 			return []string{"*float64", "sql.NullFloat64", "*float32"}, nil
 		}
