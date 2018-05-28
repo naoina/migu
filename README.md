@@ -164,7 +164,7 @@ Body string `migu:"column:content"`
 To specify the type of column, please use `type` struct tag.
 
 ```go
-Balance float64 `migu:type:decimal`
+Balance float64 `migu:"type:decimal"`
 ```
 
 #### EXTRA
