@@ -159,6 +159,14 @@ You can specify the column name on the database.
 Body string `migu:"column:content"`
 ```
 
+#### TYPE
+
+To specify the type of column, please use `type` struct tag.
+
+```go
+Balance float64 `migu:type:decimal`
+```
+
 #### EXTRA
 
 If you want to add an extra clause to column definition such as `ON UPDATE CURRENT_TIMESTAMP`, you can use `extra` field tag.

@@ -26,29 +26,6 @@ const (
 	defaultVarcharSize  = 255
 )
 
-var (
-	sameTypeMap = func() map[string][]string {
-		m := map[string][]string{}
-		for _, types := range [][]string{
-			{"*bool", "sql.NullBool"},
-			{"*uint", "*uint32"},
-			{"uint", "uint32"},
-			{"*int", "*int32"},
-			{"int", "int32"},
-			{"*int64", "sql.NullInt64"},
-			{"*string", "sql.NullString", "[]byte"},
-			{"*float32", "*float64", "sql.NullFloat64"},
-			{"float32", "float64"},
-			{"*time.Time", "mysql.NullTime", "gorp.NullTime"},
-		} {
-			for _, t := range types {
-				m[t] = types
-			}
-		}
-		return m
-	}()
-)
-
 // Sync synchronizes the schema between Go's struct and the database.
 // Go's struct may be provided via the filename of the source file, or via
 // the src parameter.
@@ -100,6 +77,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			structASTMap[k] = v
 		}
 	}
+	d := &dialect.MySQL{}
 	structMap := map[string]*table{}
 	for name, structAST := range structASTMap {
 		for _, fld := range structAST.StructType.Fields.List {
@@ -107,7 +85,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			if err != nil {
 				return nil, err
 			}
-			f, err := newField(typeName, fld)
+			f, err := newField(d, typeName, fld)
 			if err != nil {
 				return nil, err
 			}
@@ -134,7 +112,6 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		return nil, err
 	}
 	sort.Strings(names)
-	d := &dialect.MySQL{}
 	var migrations []string
 	droppedColumn := map[string]struct{}{}
 	for _, name := range names {
@@ -147,7 +124,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 				if err != nil {
 					return nil, err
 				}
-				f, err := newField(fmt.Sprint(oldFieldAST.Type), oldFieldAST)
+				f, err := newField(d, fmt.Sprint(oldFieldAST.Type), oldFieldAST)
 				if err != nil {
 					return nil, err
 				}
@@ -273,6 +250,7 @@ type index struct {
 
 type field struct {
 	Name          string
+	GoType        string
 	Type          string
 	Column        string
 	Comment       string
@@ -284,12 +262,13 @@ type field struct {
 	Default       string
 	Size          uint64
 	Extra         string
+	Nullable      bool
 }
 
-func newField(typeName string, f *ast.Field) (*field, error) {
+func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) {
 	ret := &field{
-		Type: typeName,
-		Size: defaultVarcharSize,
+		GoType: typeName,
+		Size:   defaultVarcharSize,
 	}
 	if len(f.Names) > 0 && f.Names[0] != nil {
 		ret.Name = f.Names[0].Name
@@ -299,7 +278,7 @@ func newField(typeName string, f *ast.Field) (*field, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := parseStructTag(ret, reflect.StructTag(s)); err != nil {
+		if err := parseStructTag(d, ret, reflect.StructTag(s)); err != nil {
 			return nil, err
 		}
 	}
@@ -309,6 +288,11 @@ func newField(typeName string, f *ast.Field) (*field, error) {
 	if ret.Column == "" {
 		ret.Column = stringutil.ToSnakeCase(ret.Name)
 	}
+	colType, null := d.ColumnType(ret.GoType, ret.Size, ret.AutoIncrement)
+	if ret.Type == "" {
+		ret.Type = colType
+	}
+	ret.Nullable = null
 	return ret, nil
 }
 
@@ -339,7 +323,8 @@ func (f *field) IsDifferent(another *field) bool {
 		return false
 	}
 	return ((f == nil && another != nil) || (f != nil && another == nil)) ||
-		!isSameType(f.Type, another.Type) ||
+		f.Type != another.Type ||
+		f.Nullable != another.Nullable ||
 		f.Default != another.Default ||
 		f.Size != another.Size ||
 		f.Column != another.Column ||
@@ -524,6 +509,7 @@ const (
 	tagUnique        = "unique"
 	tagSize          = "size"
 	tagColumn        = "column"
+	tagType          = "type"
 	tagExtra         = "extra"
 	tagIgnore        = "-"
 )
@@ -743,13 +729,12 @@ func detectTypeName(n ast.Node) (string, error) {
 }
 
 func columnSQL(d dialect.Dialect, f *field) string {
-	colType, null := d.ColumnType(f.Type, f.Size, f.AutoIncrement)
-	column := []string{d.Quote(f.Column), colType}
-	if !null {
+	column := []string{d.Quote(f.Column), f.Type}
+	if !f.Nullable {
 		column = append(column, "NOT NULL")
 	}
 	if f.Default != "" {
-		column = append(column, "DEFAULT", formatDefault(d, f.Type, f.Default))
+		column = append(column, "DEFAULT", formatDefault(d, f.GoType, f.Default))
 	}
 	if f.AutoIncrement && d.AutoIncrement() != "" {
 		column = append(column, d.AutoIncrement())
@@ -761,6 +746,13 @@ func columnSQL(d dialect.Dialect, f *field) string {
 		column = append(column, "COMMENT", d.QuoteString(f.Comment))
 	}
 	return strings.Join(column, " ")
+}
+
+func dataType(d dialect.Dialect, name string) string {
+	if t := strings.ToUpper(name); inStrings(d.DataTypes(), t) {
+		return t
+	}
+	return ""
 }
 
 func hasDatetimeColumn(t map[string][]*columnSchema) bool {
@@ -812,7 +804,7 @@ func makeStructAST(name string, schemas []*columnSchema) (ast.Decl, error) {
 	}, nil
 }
 
-func parseStructTag(f *field, tag reflect.StructTag) error {
+func parseStructTag(d dialect.Dialect, f *field, tag reflect.StructTag) error {
 	migu := tag.Get("migu")
 	if migu == "" {
 		return nil
@@ -847,6 +839,13 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 				return fmt.Errorf("`column` tag must specify the parameter")
 			}
 			f.Column = optval[1]
+		case tagType:
+			if len(optval) < 2 {
+				return fmt.Errorf("`type` tag must specify the parameter")
+			}
+			if f.Type = dataType(d, optval[1]); f.Type == "" {
+				return fmt.Errorf("unknown data type: `%s'", optval[1])
+			}
 		case tagSize:
 			if len(optval) < 2 {
 				return fmt.Errorf("`size' tag must specify the parameter")
@@ -866,10 +865,6 @@ func parseStructTag(f *field, tag reflect.StructTag) error {
 		}
 	}
 	return nil
-}
-
-func isSameType(t1, t2 string) bool {
-	return t1 == t2 || inStrings(sameTypeMap[t1], t2)
 }
 
 type columnSchema struct {

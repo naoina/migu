@@ -510,6 +510,53 @@ func TestDiff(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("type tag", func(t *testing.T) {
+		before(t)
+		for _, v := range []struct {
+			columns []string
+			expect  []string
+		}{
+			{[]string{
+				"Fee float64 `migu:\"type:tinyint\"`",
+			}, []string{
+				"CREATE TABLE `user` (\n" +
+					"  `fee` TINYINT NOT NULL\n" +
+					")",
+			}},
+			{[]string{
+				"Fee float64 `migu:\"type:int\"`",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `fee` `fee` INT NOT NULL",
+			}},
+			{[]string{
+				"Fee float64",
+				"Point int `migu:\"type:smallint\"`",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL, ADD `point` SMALLINT NOT NULL",
+			}},
+		} {
+			src := "package migu_test\n" +
+				"//+migu\n" +
+				"type User struct {\n" +
+				strings.Join(v.columns, "\n") + "\n" +
+				"}"
+			results, err := migu.Diff(db, "", src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual := results
+			expect := v.expect
+			if !reflect.DeepEqual(actual, expect) {
+				t.Fatalf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+			}
+			for _, q := range results {
+				if _, err := db.Exec(q); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	})
 }
 
 func TestDiffWithSrc(t *testing.T) {

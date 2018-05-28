@@ -5,6 +5,41 @@ import (
 	"strings"
 )
 
+var mysqlDataTypes = []string{
+	"BIT",
+	"TINYINT",
+	"BOOL",
+	"BOOLEAN",
+	"SMALLINT",
+	"MEDIUMINT",
+	"INT",
+	"INTEGER",
+	"BIGINT",
+	"DECIMAL",
+	"DEC",
+	"FLOAT",
+	"DOUBLE",
+	"DATE",
+	"DATETIME",
+	"TIMESTAMP",
+	"TIME",
+	"YEAR",
+	"CHAR",
+	"VARCHAR",
+	"BINARY",
+	"VARBINARY",
+	"TINYBLOB",
+	"TINYTEXT",
+	"BLOB",
+	"TEXT",
+	"MEDIUMBLOB",
+	"MEDIUMTEXT",
+	"LONGBLOB",
+	"LONGTEXT",
+	"ENUM",
+	"SET",
+}
+
 type MySQL struct {
 }
 
@@ -51,6 +86,10 @@ func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ st
 	default:
 		return "VARCHAR(255)", true
 	}
+}
+
+func (d *MySQL) DataTypes() []string {
+	return mysqlDataTypes
 }
 
 func (d *MySQL) Quote(s string) string {
