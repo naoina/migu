@@ -557,6 +557,108 @@ func TestDiff(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("precision tag", func(t *testing.T) {
+		before(t)
+		for _, v := range []struct {
+			columns []string
+			expect  []string
+		}{
+			{[]string{
+				"Fee float64 `migu:\"type:decimal,precision:60\"`",
+				"Point int `migu:\"precision:11\"`",
+			}, []string{
+				"CREATE TABLE `user` (\n" +
+					"  `fee` DECIMAL(60) NOT NULL,\n" +
+					"  `point` INT NOT NULL\n" +
+					")",
+			}},
+			{[]string{
+				"Fee float64 `migu:\"type:decimal,precision:65\"`",
+				"Point int `migu:\"precision:12\"`",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `fee` `fee` DECIMAL(65) NOT NULL",
+			}},
+			{[]string{
+				"Fee float64",
+				"Point int",
+				"Balance float64 `migu:\"type:decimal,precision:20\"`",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL, ADD `balance` DECIMAL(20) NOT NULL",
+			}},
+		} {
+			src := "package migu_test\n" +
+				"//+migu\n" +
+				"type User struct {\n" +
+				strings.Join(v.columns, "\n") + "\n" +
+				"}"
+			results, err := migu.Diff(db, "", src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual := results
+			expect := v.expect
+			if !reflect.DeepEqual(actual, expect) {
+				t.Fatalf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+			}
+			for _, q := range results {
+				if _, err := db.Exec(q); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	})
+
+	t.Run("scale tag", func(t *testing.T) {
+		before(t)
+		for _, v := range []struct {
+			columns []string
+			expect  []string
+		}{
+			{[]string{
+				"Fee float64 `migu:\"type:decimal,precision:60,scale:2\"`",
+				"Point int `migu:\"precision:11,scale:3\"`",
+			}, []string{
+				"CREATE TABLE `user` (\n" +
+					"  `fee` DECIMAL(60,2) NOT NULL,\n" +
+					"  `point` INT NOT NULL\n" +
+					")",
+			}},
+			{[]string{
+				"Fee float64 `migu:\"type:decimal,precision:65,scale:3\"`",
+				"Point int `migu:\"precision:12,scale:2\"`",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `fee` `fee` DECIMAL(65,3) NOT NULL",
+			}},
+			{[]string{
+				"Fee float64",
+				"Point int",
+				"Balance float64 `migu:\"type:decimal,precision:20,scale:1\"`",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL, ADD `balance` DECIMAL(20,1) NOT NULL",
+			}},
+		} {
+			src := "package migu_test\n" +
+				"//+migu\n" +
+				"type User struct {\n" +
+				strings.Join(v.columns, "\n") + "\n" +
+				"}"
+			results, err := migu.Diff(db, "", src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual := results
+			expect := v.expect
+			if !reflect.DeepEqual(actual, expect) {
+				t.Fatalf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+			}
+			for _, q := range results {
+				if _, err := db.Exec(q); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	})
 }
 
 func TestDiffWithSrc(t *testing.T) {
@@ -1019,7 +1121,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Balance float64\n" +
+			"	Balance float64 `migu:\"precision:65,scale:2\"`\n" +
 			"}\n\n",
 		},
 	} {

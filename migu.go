@@ -263,12 +263,17 @@ type field struct {
 	Size          uint64
 	Extra         string
 	Nullable      bool
+	Unsigned      bool
+	Precision     int64
+	Scale         int64
 }
 
 func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) {
 	ret := &field{
-		GoType: typeName,
-		Size:   defaultVarcharSize,
+		GoType:    typeName,
+		Size:      defaultVarcharSize,
+		Precision: -1,
+		Scale:     -1,
 	}
 	if len(f.Names) > 0 && f.Names[0] != nil {
 		ret.Name = f.Names[0].Name
@@ -288,11 +293,15 @@ func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) 
 	if ret.Column == "" {
 		ret.Column = stringutil.ToSnakeCase(ret.Name)
 	}
-	colType, null := d.ColumnType(ret.GoType, ret.Size, ret.AutoIncrement)
-	if ret.Type == "" {
-		ret.Type = colType
+	colType, unsigned, null := d.ColumnType(ret.GoType, ret.Size, ret.AutoIncrement)
+	if ret.Type != "" {
+		colType = ret.Type
 	}
+	ret.Unsigned = unsigned
 	ret.Nullable = null
+	if ret.Type = d.DataType(colType, ret.Size, ret.Unsigned, ret.Precision, ret.Scale); ret.Type == "" {
+		return nil, fmt.Errorf("unknown data type: `%s'", colType)
+	}
 	return ret, nil
 }
 
@@ -330,7 +339,8 @@ func (f *field) IsDifferent(another *field) bool {
 		f.Column != another.Column ||
 		f.Extra != another.Extra ||
 		f.Comment != another.Comment ||
-		f.AutoIncrement != another.AutoIncrement
+		f.AutoIncrement != another.AutoIncrement ||
+		(f.Type == "DECIMAL" && (f.Precision != another.Precision || f.Scale != another.Scale))
 }
 
 func makePrimaryKeyColumns(oldFields, newFields []*field) (pkColumns []string, changed bool) {
@@ -511,6 +521,8 @@ const (
 	tagColumn        = "column"
 	tagType          = "type"
 	tagExtra         = "extra"
+	tagPrecision     = "precision"
+	tagScale         = "scale"
 	tagIgnore        = "-"
 )
 
@@ -748,13 +760,6 @@ func columnSQL(d dialect.Dialect, f *field) string {
 	return strings.Join(column, " ")
 }
 
-func dataType(d dialect.Dialect, name string) string {
-	if t := strings.ToUpper(name); inStrings(d.DataTypes(), t) {
-		return t
-	}
-	return ""
-}
-
 func hasDatetimeColumn(t map[string][]*columnSchema) bool {
 	for _, schemas := range t {
 		for _, schema := range schemas {
@@ -843,9 +848,7 @@ func parseStructTag(d dialect.Dialect, f *field, tag reflect.StructTag) error {
 			if len(optval) < 2 {
 				return fmt.Errorf("`type` tag must specify the parameter")
 			}
-			if f.Type = dataType(d, optval[1]); f.Type == "" {
-				return fmt.Errorf("unknown data type: `%s'", optval[1])
-			}
+			f.Type = optval[1]
 		case tagSize:
 			if len(optval) < 2 {
 				return fmt.Errorf("`size' tag must specify the parameter")
@@ -860,6 +863,24 @@ func parseStructTag(d dialect.Dialect, f *field, tag reflect.StructTag) error {
 				return fmt.Errorf("`extra` tag must specify the parameter")
 			}
 			f.Extra = optval[1]
+		case tagPrecision:
+			if len(optval) < 2 {
+				return fmt.Errorf("`precision` tag must specify the parameter")
+			}
+			prec, err := strconv.ParseInt(optval[1], 10, 64)
+			if err != nil {
+				return err
+			}
+			f.Precision = prec
+		case tagScale:
+			if len(optval) < 2 {
+				return fmt.Errorf("`scale` tag must specify the parameter")
+			}
+			scale, err := strconv.ParseInt(optval[1], 10, 64)
+			if err != nil {
+				return err
+			}
+			f.Scale = scale
 		default:
 			return fmt.Errorf("unknown option: `%s'", opt)
 		}
@@ -926,6 +947,12 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 		if *schema.CharacterMaximumLength != defaultVarcharSize {
 			tags = append(tags, fmt.Sprintf("%s:%d", tagSize, *schema.CharacterMaximumLength))
 		}
+	}
+	if schema.hasPrecision() {
+		tags = append(tags, fmt.Sprintf("%s:%d", tagPrecision, schema.NumericPrecision.Int64))
+	}
+	if schema.hasScale() {
+		tags = append(tags, fmt.Sprintf("%s:%d", tagScale, schema.NumericScale.Int64))
 	}
 	if schema.hasExtra() {
 		tags = append(tags, fmt.Sprintf("%s:%s", tagExtra, strings.ToUpper(schema.Extra)))
@@ -1048,4 +1075,12 @@ func (schema *columnSchema) hasUniqueKey() bool {
 
 func (schema *columnSchema) hasSize() bool {
 	return (schema.DataType == "varchar" || schema.DataType == "char") && schema.CharacterMaximumLength != nil
+}
+
+func (schema *columnSchema) hasPrecision() bool {
+	return schema.DataType == "decimal" && schema.NumericPrecision.Valid
+}
+
+func (schema *columnSchema) hasScale() bool {
+	return schema.DataType == "decimal" && schema.NumericScale.Valid
 }

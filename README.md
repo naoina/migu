@@ -167,6 +167,20 @@ To specify the type of column, please use `type` struct tag.
 Balance float64 `migu:"type:decimal"`
 ```
 
+#### PRECISION & SCALE
+
+If `DECIMAL` data type is specified, `precision` and `scale` tags can be used.
+
+```go
+Balance float64 `migu:"type:decimal,precision:65,scale:2"`
+```
+
+This will become the following data type.
+
+```sql
+DECIMAL(65,2)
+```
+
 #### EXTRA
 
 If you want to add an extra clause to column definition such as `ON UPDATE CURRENT_TIMESTAMP`, you can use `extra` field tag.

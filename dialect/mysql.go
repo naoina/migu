@@ -5,91 +5,101 @@ import (
 	"strings"
 )
 
-var mysqlDataTypes = []string{
-	"BIT",
-	"TINYINT",
-	"BOOL",
-	"BOOLEAN",
-	"SMALLINT",
-	"MEDIUMINT",
-	"INT",
-	"INTEGER",
-	"BIGINT",
-	"DECIMAL",
-	"DEC",
-	"FLOAT",
-	"DOUBLE",
-	"DATE",
-	"DATETIME",
-	"TIMESTAMP",
-	"TIME",
-	"YEAR",
-	"CHAR",
-	"VARCHAR",
-	"BINARY",
-	"VARBINARY",
-	"TINYBLOB",
-	"TINYTEXT",
-	"BLOB",
-	"TEXT",
-	"MEDIUMBLOB",
-	"MEDIUMTEXT",
-	"LONGBLOB",
-	"LONGTEXT",
-	"ENUM",
-	"SET",
-}
-
 type MySQL struct {
 }
 
-func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ string, null bool) {
+func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ string, unsigned, null bool) {
 	if name[0] == '*' {
 		null = true
 		name = name[1:]
 	}
 	switch name {
 	case "string":
-		return d.varchar(size), null
+		return d.varchar(size), false, null
 	case "sql.NullString", "[]byte":
-		return d.varchar(size), true
+		return d.varchar(size), false, true
 	case "int", "int32":
-		return "INT", null
+		return "INT", false, null
 	case "int8":
-		return "TINYINT", null
+		return "TINYINT", false, null
 	case "bool":
-		return "TINYINT(1)", null
+		return "TINYINT(1)", false, null
 	case "sql.NullBool":
-		return "TINYINT(1)", true
+		return "TINYINT(1)", false, true
 	case "int16":
-		return "SMALLINT", null
+		return "SMALLINT", false, null
 	case "int64":
-		return "BIGINT", null
+		return "BIGINT", false, null
 	case "sql.NullInt64":
-		return "BIGINT", true
+		return "BIGINT", false, true
 	case "uint", "uint32":
-		return "INT UNSIGNED", null
+		return "INT", true, null
 	case "uint8":
-		return "TINYINT UNSIGNED", null
+		return "TINYINT", true, null
 	case "uint16":
-		return "SMALLINT UNSIGNED", null
+		return "SMALLINT", true, null
 	case "uint64":
-		return "BIGINT UNSIGNED", null
+		return "BIGINT", true, null
 	case "float32", "float64":
-		return "DOUBLE", null
+		return "DOUBLE", false, null
 	case "sql.NullFloat64":
-		return "DOUBLE", true
+		return "DOUBLE", false, true
 	case "time.Time":
-		return "DATETIME", null
+		return "DATETIME", false, null
 	case "mysql.NullTime", "gorp.NullTime":
-		return "DATETIME", true
+		return "DATETIME", false, true
 	default:
-		return "VARCHAR(255)", true
+		return "VARCHAR", false, true
 	}
 }
 
-func (d *MySQL) DataTypes() []string {
-	return mysqlDataTypes
+func (d *MySQL) DataType(name string, size uint64, unsigned bool, prec, scale int64) string {
+	switch name = strings.ToUpper(name); name {
+	case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT":
+		if unsigned {
+			name += " UNSIGNED"
+		}
+		return name
+	case "DECIMAL", "DEC", "FLOAT":
+		if prec > 0 {
+			if scale >= 0 {
+				name += fmt.Sprintf("(%d,%d)", prec, scale)
+			} else {
+				name += fmt.Sprintf("(%d)", prec)
+			}
+			if unsigned {
+				name += " UNSIGNED"
+			}
+		}
+		return name
+	case "DOUBLE":
+		if prec > 0 {
+			name += fmt.Sprintf("(%d,%d)", prec, scale)
+		}
+		if unsigned {
+			name += " UNSIGNED"
+		}
+		return name
+	case "VARCHAR", "BINARY", "VARBINARY":
+		if size < 1 {
+			size = 255
+		}
+		return fmt.Sprintf("%s(%d)", name, size)
+	case "CHAR", "BLOB", "TEXT":
+		if size > 0 {
+			return fmt.Sprintf("%s(%d)", name, size)
+		}
+		return name
+	case "DATETIME", "TIMESTAMP", "TIME", "YEAR":
+		return name
+	case "BIT", "BOOL", "BOOLEAN", "TINYINT(1)", "DATE", "TINYBLOB", "TINYTEXT", "MEDIUMBLOB", "MEDIUMTEXT", "LONGBLOB", "LONGTEXT":
+		return name
+	case "ENUM":
+		return name
+	case "SET":
+		return name
+	}
+	return ""
 }
 
 func (d *MySQL) Quote(s string) string {
@@ -107,7 +117,7 @@ func (d *MySQL) AutoIncrement() string {
 func (d *MySQL) varchar(size uint64) string {
 	switch {
 	case size < 21846:
-		return fmt.Sprintf("VARCHAR(%d)", size)
+		return "VARCHAR"
 	case size < (1<<16)-1-2: // approximate 64KB.
 		// 65533 ((2^16) - 1) - (length of prefix)
 		// See http://dev.mysql.com/doc/refman/5.5/en/string-type-overview.html#idm140418628949072
