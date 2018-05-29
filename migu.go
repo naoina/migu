@@ -270,10 +270,8 @@ type field struct {
 
 func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) {
 	ret := &field{
-		GoType:    typeName,
-		Size:      defaultVarcharSize,
-		Precision: -1,
-		Scale:     -1,
+		GoType: typeName,
+		Size:   defaultVarcharSize,
 	}
 	if len(f.Names) > 0 && f.Names[0] != nil {
 		ret.Name = f.Names[0].Name
@@ -547,6 +545,7 @@ func getTableMap(db *sql.DB, tables ...string) (map[string][]*columnSchema, erro
 		"  CHARACTER_OCTET_LENGTH,",
 		"  NUMERIC_PRECISION,",
 		"  NUMERIC_SCALE,",
+		"  DATETIME_PRECISION,",
 		"  COLUMN_TYPE,",
 		"  COLUMN_KEY,",
 		"  EXTRA,",
@@ -583,6 +582,7 @@ func getTableMap(db *sql.DB, tables ...string) (map[string][]*columnSchema, erro
 			&schema.CharacterOctetLength,
 			&schema.NumericPrecision,
 			&schema.NumericScale,
+			&schema.DatetimePrecision,
 			&schema.ColumnType,
 			&schema.ColumnKey,
 			&schema.Extra,
@@ -900,6 +900,7 @@ type columnSchema struct {
 	CharacterOctetLength   sql.NullInt64
 	NumericPrecision       sql.NullInt64
 	NumericScale           sql.NullInt64
+	DatetimePrecision      sql.NullInt64
 	ColumnType             string
 	ColumnKey              string
 	Extra                  string
@@ -956,6 +957,9 @@ func (schema *columnSchema) fieldAST(d dialect.Dialect) (*ast.Field, error) {
 	}
 	if schema.hasScale() {
 		tags = append(tags, fmt.Sprintf("%s:%d", tagScale, schema.NumericScale.Int64))
+	}
+	if schema.hasDatetimePrecision() {
+		tags = append(tags, fmt.Sprintf("%s:%d", tagPrecision, schema.DatetimePrecision.Int64))
 	}
 	if schema.hasExtra() {
 		tags = append(tags, fmt.Sprintf("%s:%s", tagExtra, strings.ToUpper(schema.Extra)))
@@ -1086,9 +1090,20 @@ func (schema *columnSchema) hasSize() bool {
 }
 
 func (schema *columnSchema) hasPrecision() bool {
-	return schema.DataType == "decimal" && schema.NumericPrecision.Valid
+	return schema.DataType == "decimal" && schema.NumericPrecision.Valid && schema.NumericPrecision.Int64 > 0
 }
 
 func (schema *columnSchema) hasScale() bool {
-	return schema.DataType == "decimal" && schema.NumericScale.Valid
+	switch schema.DataType {
+	case "decimal":
+		return schema.NumericScale.Valid && schema.NumericScale.Int64 > 0
+	case "double":
+		return schema.NumericScale.Valid
+	}
+	return false
+}
+
+func (schema *columnSchema) hasDatetimePrecision() bool {
+	return inStrings([]string{"datetime", "timestamp", "time"}, schema.DataType) && schema.DatetimePrecision.Valid && schema.DatetimePrecision.Int64 > 0
+
 }

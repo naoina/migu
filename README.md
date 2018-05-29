@@ -181,6 +181,16 @@ This will become the following data type.
 DECIMAL(65,2)
 ```
 
+Also `precision` tag can be used for the date and time types.
+
+```go
+CreatedAt time.Time `migu:"precision:6"`
+```
+
+```sql
+DATETIME(6)
+```
+
 #### EXTRA
 
 If you want to add an extra clause to column definition such as `ON UPDATE CURRENT_TIMESTAMP`, you can use `extra` field tag.
