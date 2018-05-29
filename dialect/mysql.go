@@ -62,7 +62,7 @@ func (d *MySQL) DataType(name string, size uint64, unsigned bool, prec, scale in
 		return name
 	case "DECIMAL", "DEC", "FLOAT":
 		if prec > 0 {
-			if scale >= 0 {
+			if scale > 0 {
 				name += fmt.Sprintf("(%d,%d)", prec, scale)
 			} else {
 				name += fmt.Sprintf("(%d)", prec)
