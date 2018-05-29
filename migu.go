@@ -286,7 +286,7 @@ func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) 
 		}
 	}
 	if f.Comment != nil {
-		ret.Comment = strings.TrimSpace(f.Comment.Text())
+		ret.Comment = strings.Trim(strings.TrimSpace(f.Comment.Text()), "/ ")
 	}
 	if ret.Column == "" {
 		ret.Column = stringutil.ToSnakeCase(ret.Name)

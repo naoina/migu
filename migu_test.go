@@ -113,14 +113,14 @@ func TestDiff(t *testing.T) {
 		}
 	})
 
-	t.Run("multiple-column primary key", func(t *testing.T) {
+	t.Run("multiple-column primary key and comment", func(t *testing.T) {
 		before(t)
 		src := strings.Join([]string{
 			"package migu_test",
 			"//+migu",
 			"type User struct {",
 			"	UserID uint64 `migu:\"pk\"`",
-			"	ProfileID uint64 `migu:\"pk\"`",
+			"	ProfileID uint64 `migu:\"pk\"` //max 10 digits",
 			"}",
 		}, "\n")
 		results, err := migu.Diff(db, "", src)
@@ -132,7 +132,7 @@ func TestDiff(t *testing.T) {
 			strings.Join([]string{
 				"CREATE TABLE `user` (",
 				"  `user_id` BIGINT UNSIGNED NOT NULL,",
-				"  `profile_id` BIGINT UNSIGNED NOT NULL,",
+				"  `profile_id` BIGINT UNSIGNED NOT NULL COMMENT 'max 10 digits',",
 				"  PRIMARY KEY (`user_id`, `profile_id`)",
 				")",
 			}, "\n"),
