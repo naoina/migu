@@ -1050,7 +1050,7 @@ func (schema *columnSchema) GoFieldTypes() (goTypes []string, typ string, err er
 			return []string{"*time.Time"}, "", nil
 		}
 		return []string{"time.Time"}, "", nil
-	case "double", "decimal":
+	case "double", "float", "decimal":
 		if schema.isNullable() {
 			return []string{"*float64", "sql.NullFloat64", "*float32"}, "", nil
 		}
