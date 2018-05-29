@@ -586,6 +586,27 @@ func TestDiff(t *testing.T) {
 			}, []string{
 				"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL, ADD `balance` DECIMAL(20) NOT NULL",
 			}},
+			{[]string{
+				"Fee float64",
+				"Point int",
+				"Balance float64 `migu:\"type:decimal,precision:20\"`",
+			}, []string(nil)},
+			{[]string{
+				"Fee float64",
+				"Point int",
+				"Balance float64 `migu:\"type:decimal,precision:20\"`",
+				"UpdatedAt time.Time `migu:\"precision:6\"`",
+			}, []string{
+				"ALTER TABLE `user` ADD `updated_at` DATETIME(6) NOT NULL",
+			}},
+			{[]string{
+				"Fee float64",
+				"Point int",
+				"Balance float64 `migu:\"type:decimal,precision:20\"`",
+				"UpdatedAt time.Time",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `updated_at` `updated_at` DATETIME NOT NULL",
+			}},
 		} {
 			src := "package migu_test\n" +
 				"//+migu\n" +
@@ -1130,7 +1151,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Balance float64 `migu:\"precision:65,scale:2\"`\n" +
+			"	Balance float64 `migu:\"type:decimal,precision:65,scale:2\"`\n" +
 			"}\n\n",
 		},
 	} {

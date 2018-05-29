@@ -120,7 +120,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		var oldFields []*field
 		if columns, ok := tableMap[name]; ok {
 			for _, c := range columns {
-				oldFieldAST, err := c.fieldAST()
+				oldFieldAST, err := c.fieldAST(d)
 				if err != nil {
 					return nil, err
 				}
@@ -270,10 +270,8 @@ type field struct {
 
 func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) {
 	ret := &field{
-		GoType:    typeName,
-		Size:      defaultVarcharSize,
-		Precision: -1,
-		Scale:     -1,
+		GoType: typeName,
+		Size:   defaultVarcharSize,
 	}
 	if len(f.Names) > 0 && f.Names[0] != nil {
 		ret.Name = f.Names[0].Name
@@ -498,8 +496,9 @@ func Fprint(output io.Writer, db *sql.DB) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	d := &dialect.MySQL{}
 	for _, name := range names {
-		s, err := makeStructAST(name, tableMap[name])
+		s, err := makeStructAST(d, name, tableMap[name])
 		if err != nil {
 			return err
 		}
@@ -546,6 +545,7 @@ func getTableMap(db *sql.DB, tables ...string) (map[string][]*columnSchema, erro
 		"  CHARACTER_OCTET_LENGTH,",
 		"  NUMERIC_PRECISION,",
 		"  NUMERIC_SCALE,",
+		"  DATETIME_PRECISION,",
 		"  COLUMN_TYPE,",
 		"  COLUMN_KEY,",
 		"  EXTRA,",
@@ -582,6 +582,7 @@ func getTableMap(db *sql.DB, tables ...string) (map[string][]*columnSchema, erro
 			&schema.CharacterOctetLength,
 			&schema.NumericPrecision,
 			&schema.NumericScale,
+			&schema.DatetimePrecision,
 			&schema.ColumnType,
 			&schema.ColumnKey,
 			&schema.Extra,
@@ -785,10 +786,10 @@ func importAST(pkg string) ast.Decl {
 	}
 }
 
-func makeStructAST(name string, schemas []*columnSchema) (ast.Decl, error) {
+func makeStructAST(d dialect.Dialect, name string, schemas []*columnSchema) (ast.Decl, error) {
 	var fields []*ast.Field
 	for _, schema := range schemas {
-		f, err := schema.fieldAST()
+		f, err := schema.fieldAST(d)
 		if err != nil {
 			return nil, err
 		}
@@ -899,6 +900,7 @@ type columnSchema struct {
 	CharacterOctetLength   sql.NullInt64
 	NumericPrecision       sql.NullInt64
 	NumericScale           sql.NullInt64
+	DatetimePrecision      sql.NullInt64
 	ColumnType             string
 	ColumnKey              string
 	Extra                  string
@@ -907,19 +909,21 @@ type columnSchema struct {
 	IndexName              string
 }
 
-func (schema *columnSchema) fieldAST() (*ast.Field, error) {
-	types, err := schema.GoFieldTypes()
+func (schema *columnSchema) fieldAST(d dialect.Dialect) (*ast.Field, error) {
+	goTypes, typ, err := schema.GoFieldTypes()
 	if err != nil {
 		return nil, err
 	}
-	typ := types[0]
 	field := &ast.Field{
 		Names: []*ast.Ident{
 			ast.NewIdent(stringutil.ToUpperCamelCase(schema.ColumnName)),
 		},
-		Type: ast.NewIdent(typ),
+		Type: ast.NewIdent(goTypes[0]),
 	}
 	var tags []string
+	if typ != "" {
+		tags = append(tags, fmt.Sprintf("%s:%s", tagType, typ))
+	}
 	if schema.ColumnDefault.Valid && (schema.ColumnType != "datetime" || schema.ColumnDefault.String != "0000-00-00 00:00:00") {
 		tags = append(tags, tagDefault+":"+schema.ColumnDefault.String)
 	}
@@ -954,6 +958,9 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	if schema.hasScale() {
 		tags = append(tags, fmt.Sprintf("%s:%d", tagScale, schema.NumericScale.Int64))
 	}
+	if schema.hasDatetimePrecision() {
+		tags = append(tags, fmt.Sprintf("%s:%d", tagPrecision, schema.DatetimePrecision.Int64))
+	}
 	if schema.hasExtra() {
 		tags = append(tags, fmt.Sprintf("%s:%s", tagExtra, strings.ToUpper(schema.Extra)))
 	}
@@ -973,75 +980,80 @@ func (schema *columnSchema) fieldAST() (*ast.Field, error) {
 	return field, nil
 }
 
-func (schema *columnSchema) GoFieldTypes() ([]string, error) {
+func (schema *columnSchema) GoFieldTypes() (goTypes []string, typ string, err error) {
 	switch schema.DataType {
 	case "tinyint":
 		if schema.isUnsigned() {
 			if schema.isNullable() {
-				return []string{"*uint8"}, nil
+				return []string{"*uint8"}, "", nil
 			}
-			return []string{"uint8"}, nil
+			return []string{"uint8"}, "", nil
 		}
 		if schema.ColumnType == "tinyint(1)" {
 			if schema.isNullable() {
-				return []string{"*bool", "sql.NullBool"}, nil
+				return []string{"*bool", "sql.NullBool"}, "", nil
 			}
-			return []string{"bool"}, nil
+			return []string{"bool"}, "", nil
 		}
 		if schema.isNullable() {
-			return []string{"*int8"}, nil
+			return []string{"*int8"}, "", nil
 		}
-		return []string{"int8"}, nil
+		return []string{"int8"}, "", nil
 	case "smallint":
 		if schema.isUnsigned() {
 			if schema.isNullable() {
-				return []string{"*uint16"}, nil
+				return []string{"*uint16"}, "", nil
 			}
-			return []string{"uint16"}, nil
+			return []string{"uint16"}, "", nil
 		}
 		if schema.isNullable() {
-			return []string{"*int16"}, nil
+			return []string{"*int16"}, "", nil
 		}
-		return []string{"int16"}, nil
+		return []string{"int16"}, "", nil
 	case "mediumint", "int":
 		if schema.isUnsigned() {
 			if schema.isNullable() {
-				return []string{"*uint", "*uint32"}, nil
+				return []string{"*uint", "*uint32"}, "", nil
 			}
-			return []string{"uint", "uint32"}, nil
+			return []string{"uint", "uint32"}, "", nil
 		}
 		if schema.isNullable() {
-			return []string{"*int", "*int32"}, nil
+			return []string{"*int", "*int32"}, "", nil
 		}
-		return []string{"int", "int32"}, nil
+		return []string{"int", "int32"}, "", nil
 	case "bigint":
 		if schema.isUnsigned() {
 			if schema.isNullable() {
-				return []string{"*uint64"}, nil
+				return []string{"*uint64"}, "", nil
 			}
-			return []string{"uint64"}, nil
+			return []string{"uint64"}, "", nil
 		}
 		if schema.isNullable() {
-			return []string{"*int64", "sql.NullInt64"}, nil
+			return []string{"*int64", "sql.NullInt64"}, "", nil
 		}
-		return []string{"int64"}, nil
+		return []string{"int64"}, "", nil
 	case "varchar", "text", "mediumtext", "longtext", "char", "binary", "varbinary":
 		if schema.isNullable() {
-			return []string{"*string", "sql.NullString", "[]byte"}, nil
+			return []string{"*string", "sql.NullString", "[]byte"}, "", nil
 		}
-		return []string{"string", "[]byte"}, nil
+		return []string{"string", "[]byte"}, "", nil
 	case "datetime":
 		if schema.isNullable() {
-			return []string{"*time.Time"}, nil
+			return []string{"*time.Time"}, "", nil
 		}
-		return []string{"time.Time"}, nil
-	case "double", "decimal":
+		return []string{"time.Time"}, "", nil
+	case "double":
 		if schema.isNullable() {
-			return []string{"*float64", "sql.NullFloat64", "*float32"}, nil
+			return []string{"*float64", "sql.NullFloat64", "*float32"}, "", nil
 		}
-		return []string{"float64", "float32"}, nil
+		return []string{"float64", "float32"}, "", nil
+	case "decimal":
+		if schema.isNullable() {
+			return []string{"*float64", "sql.NullFloat64", "*float32"}, "decimal", nil
+		}
+		return []string{"float64", "float32"}, "decimal", nil
 	default:
-		return nil, fmt.Errorf("BUG: unexpected data type: %s", schema.DataType)
+		return nil, "", fmt.Errorf("BUG: unexpected data type: %s", schema.DataType)
 	}
 }
 
@@ -1078,9 +1090,20 @@ func (schema *columnSchema) hasSize() bool {
 }
 
 func (schema *columnSchema) hasPrecision() bool {
-	return schema.DataType == "decimal" && schema.NumericPrecision.Valid
+	return schema.DataType == "decimal" && schema.NumericPrecision.Valid && schema.NumericPrecision.Int64 > 0
 }
 
 func (schema *columnSchema) hasScale() bool {
-	return schema.DataType == "decimal" && schema.NumericScale.Valid
+	switch schema.DataType {
+	case "decimal":
+		return schema.NumericScale.Valid && schema.NumericScale.Int64 > 0
+	case "double":
+		return schema.NumericScale.Valid
+	}
+	return false
+}
+
+func (schema *columnSchema) hasDatetimePrecision() bool {
+	return inStrings([]string{"datetime", "timestamp", "time"}, schema.DataType) && schema.DatetimePrecision.Valid && schema.DatetimePrecision.Int64 > 0
+
 }

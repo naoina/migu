@@ -62,7 +62,7 @@ func (d *MySQL) DataType(name string, size uint64, unsigned bool, prec, scale in
 		return name
 	case "DECIMAL", "DEC", "FLOAT":
 		if prec > 0 {
-			if scale >= 0 {
+			if scale > 0 {
 				name += fmt.Sprintf("(%d,%d)", prec, scale)
 			} else {
 				name += fmt.Sprintf("(%d)", prec)
@@ -91,6 +91,9 @@ func (d *MySQL) DataType(name string, size uint64, unsigned bool, prec, scale in
 		}
 		return name
 	case "DATETIME", "TIMESTAMP", "TIME", "YEAR":
+		if prec > 0 {
+			name += fmt.Sprintf("(%d)", prec)
+		}
 		return name
 	case "BIT", "BOOL", "BOOLEAN", "TINYINT(1)", "DATE", "TINYBLOB", "TINYTEXT", "MEDIUMBLOB", "MEDIUMTEXT", "LONGBLOB", "LONGTEXT":
 		return name
