@@ -1145,6 +1145,15 @@ func TestFprint(t *testing.T) {
 			"	Balance float64 `migu:\"type:decimal,precision:65,scale:2\"`\n" +
 			"}\n\n",
 		},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"brightness float NOT NULL DEFAULT '0.1'\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	Brightness float64 `migu:\"default:0.1\"`\n" +
+			"}\n\n",
+		},
 	} {
 		v := v
 		func() {
