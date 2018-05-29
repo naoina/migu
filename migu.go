@@ -1032,7 +1032,7 @@ func (schema *columnSchema) GoFieldTypes() (goTypes []string, typ string, err er
 			return []string{"*int64", "sql.NullInt64"}, "", nil
 		}
 		return []string{"int64"}, "", nil
-	case "varchar", "text", "mediumtext", "longtext", "char":
+	case "varchar", "text", "mediumtext", "longtext", "char", "binary", "varbinary":
 		if schema.isNullable() {
 			return []string{"*string", "sql.NullString", "[]byte"}, "", nil
 		}

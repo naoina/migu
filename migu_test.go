@@ -1109,6 +1109,24 @@ func TestFprint(t *testing.T) {
 		},
 		{[]string{
 			"CREATE TABLE user (\n" +
+				"  encrypted_name binary(4)\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	EncryptedName *string\n" +
+			"}\n\n",
+		},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"  encrypted_name varbinary(255)\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	EncryptedName *string\n" +
+			"}\n\n",
+		},
+		{[]string{
+			"CREATE TABLE user (\n" +
 				"  Active BOOL\n" +
 				")",
 		}, "//+migu\n" +
