@@ -950,6 +950,9 @@ func (schema *columnSchema) fieldAST(d dialect.Dialect) (*ast.Field, error) {
 	if schema.hasSize() {
 		tags = append(tags, fmt.Sprintf("%s:%d", tagSize, *schema.CharacterMaximumLength))
 	}
+	if schema.hasOctetSize() {
+		tags = append(tags, fmt.Sprintf("%s:%d", tagSize, schema.CharacterOctetLength.Int64))
+	}
 	if schema.hasPrecision() {
 		tags = append(tags, fmt.Sprintf("%s:%d", tagPrecision, schema.NumericPrecision.Int64))
 	}
@@ -1040,6 +1043,8 @@ func (schema *columnSchema) GoFieldTypes() (goTypes []string, typ string, err er
 			return []string{"*string", "sql.NullString", "[]byte"}, "", nil
 		}
 		return []string{"string", "[]byte"}, "", nil
+	case "varbinary", "binary":
+		return []string{"[]byte"}, "", nil
 	case "datetime":
 		if schema.isNullable() {
 			return []string{"*time.Time"}, "", nil
@@ -1085,6 +1090,10 @@ func (schema *columnSchema) hasUniqueKey() bool {
 
 func (schema *columnSchema) hasSize() bool {
 	return (schema.DataType == "varchar" || schema.DataType == "char") && schema.CharacterMaximumLength != nil
+}
+
+func (schema *columnSchema) hasOctetSize() bool {
+	return (schema.DataType == "varbinary" || schema.DataType == "binary") && schema.CharacterOctetLength.Valid
 }
 
 func (schema *columnSchema) hasPrecision() bool {

@@ -16,8 +16,10 @@ func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ st
 	switch name {
 	case "string":
 		return d.varchar(size), false, null
-	case "sql.NullString", "[]byte":
+	case "sql.NullString":
 		return d.varchar(size), false, true
+	case "[]byte":
+		return "VARBINARY", false, true
 	case "int", "int32":
 		return "INT", false, null
 	case "int8":

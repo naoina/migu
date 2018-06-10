@@ -720,7 +720,7 @@ func TestDiffWithSrc(t *testing.T) {
 		"sql.NullInt64":   "BIGINT",
 		"string":          "VARCHAR(255) NOT NULL",
 		"*string":         "VARCHAR(255)",
-		"[]byte":          "VARCHAR(255)",
+		"[]byte":          "VARBINARY(255)",
 		"sql.NullString":  "VARCHAR(255)",
 		"bool":            "TINYINT(1) NOT NULL",
 		"*bool":           "TINYINT(1)",
@@ -1108,6 +1108,24 @@ func TestFprint(t *testing.T) {
 			"//+migu\n" +
 			"type User struct {\n" +
 			"	Name *string `migu:\"type:varchar,size:255\"`\n" +
+			"}\n\n",
+		},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"  encrypted_name VARBINARY(255)\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	EncryptedName []byte `migu:\"type:varbinary,size:255\"`\n" +
+			"}\n\n",
+		},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"  encrypted_name BINARY(4)\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	EncryptedName []byte `migu:\"type:binary,size:4\"`\n" +
 			"}\n\n",
 		},
 		{[]string{
