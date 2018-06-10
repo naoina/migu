@@ -47,7 +47,7 @@ test-on-docker: mariadb
 		-w /go/src/$(GO_PACKAGE) \
 		--rm --net=$(DOCKER_NETWORK) \
 		golang:$(GO_VERSION) \
-		make test-all
+		make DB_HOST=$(DB_HOST) test-all
 
 .PHONY: clean
 clean:
