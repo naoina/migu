@@ -4,7 +4,7 @@ go:
   - "1.10"
   - "tip"
 install:
-  - make deps
+  - make test-deps
 before_script:
   - sh -c "mysql -e 'CREATE DATABASE IF NOT EXISTS migu_test;'"
 script:

@@ -18,7 +18,7 @@ deps:
 
 .PHONY: test-deps
 test-deps: deps
-	go test -v -i ./...
+	go get -v -t ./...
 
 .PHONY: test
 test:
