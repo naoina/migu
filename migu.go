@@ -277,6 +277,9 @@ func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) 
 	if len(f.Names) > 0 && f.Names[0] != nil {
 		ret.Name = f.Names[0].Name
 	}
+	if ret.IsEmbedded() {
+		return ret, nil
+	}
 	if f.Tag != nil {
 		s, err := strconv.Unquote(f.Tag.Value)
 		if err != nil {
@@ -295,6 +298,9 @@ func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) 
 	colType, unsigned, null := d.ColumnType(ret.GoType, ret.Size, ret.AutoIncrement)
 	if ret.Type != "" {
 		colType = ret.Type
+	}
+	if colType == "" {
+		return nil, fmt.Errorf("unsupported Go data type `%s'. You can use `type' struct tag if you use a user-defined type. See https://github.com/naoina/migu#type", ret.GoType)
 	}
 	ret.Unsigned = unsigned
 	if !ret.NotNull {
@@ -342,6 +348,10 @@ func (f *field) IsDifferent(another *field) bool {
 		f.Comment != another.Comment ||
 		f.AutoIncrement != another.AutoIncrement ||
 		(f.Type == "DECIMAL" && (f.Precision != another.Precision || f.Scale != another.Scale))
+}
+
+func (f *field) IsEmbedded() bool {
+	return f.Name == ""
 }
 
 func makePrimaryKeyColumns(oldFields, newFields []*field) (pkColumns []string, changed bool) {

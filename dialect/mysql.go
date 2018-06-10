@@ -50,9 +50,8 @@ func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ st
 		return "DATETIME", false, null
 	case "mysql.NullTime", "gorp.NullTime":
 		return "DATETIME", false, true
-	default:
-		return "VARCHAR", false, true
 	}
+	return "", false, true
 }
 
 func (d *MySQL) DataType(name string, size uint64, unsigned bool, prec, scale int64) string {

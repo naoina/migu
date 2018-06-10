@@ -827,6 +827,46 @@ func TestDiff(t *testing.T) {
 			t.Errorf("(-got +want)\n%v", diff)
 		}
 	})
+
+	t.Run("user-defined type", func(t *testing.T) {
+		before(t)
+		src := strings.Join([]string{
+			"package migu_test",
+			"type UUID struct {}",
+			"//+migu",
+			"type User struct {",
+			"	UUID UUID `migu:\"type:varbinary,size:36\"`",
+			"}",
+		}, "\n")
+		results, err := migu.Diff(db, "", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var actual interface{} = results
+		var expect interface{} = []string{
+			strings.Join([]string{
+				"CREATE TABLE `user` (",
+				"  `uuid` VARBINARY(36)",
+				")",
+			}, "\n"),
+		}
+		if diff := cmp.Diff(actual, expect); diff != "" {
+			t.Fatalf("(-got +want)\n%v", diff)
+		}
+		for _, query := range results {
+			if _, err := db.Exec(query); err != nil {
+				t.Fatal(err)
+			}
+		}
+		actual, err = migu.Diff(db, "", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expect = []string(nil)
+		if diff := cmp.Diff(actual, expect); diff != "" {
+			t.Errorf("(-got +want)\n%v", diff)
+		}
+	})
 }
 
 func TestDiffWithSrc(t *testing.T) {
