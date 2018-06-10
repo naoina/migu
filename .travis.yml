@@ -4,9 +4,8 @@ go:
   - "1.10"
   - "tip"
 install:
-  - go get -v github.com/go-sql-driver/mysql
-  - go get -v ./...
+  - make deps
 before_script:
   - sh -c "mysql -e 'CREATE DATABASE IF NOT EXISTS migu_test;'"
 script:
-  - go test ./...
+  - make test

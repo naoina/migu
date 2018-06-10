@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"fmt"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -16,8 +17,12 @@ import (
 var db *sql.DB
 
 func init() {
+	dbHost := os.Getenv("DB_HOST")
+	if dbHost == "" {
+		dbHost = "localhost"
+	}
 	var err error
-	db, err = sql.Open("mysql", "travis@/migu_test")
+	db, err = sql.Open("mysql", fmt.Sprintf("root@tcp(%s)/migu_test", dbHost))
 	if err != nil {
 		panic(err)
 	}
