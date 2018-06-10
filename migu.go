@@ -967,14 +967,15 @@ func (schema *columnSchema) fieldAST(d dialect.Dialect) (*ast.Field, error) {
 	}
 	if len(tags) > 0 {
 		field.Tag = &ast.BasicLit{
-			Kind:  token.STRING,
-			Value: fmt.Sprintf("`migu:\"%s\"`", strings.Join(tags, ",")),
+			Kind:     token.STRING,
+			Value:    fmt.Sprintf("`migu:\"%s\"`", strings.Join(tags, ",")),
+			ValuePos: 1,
 		}
 	}
 	if schema.ColumnComment != "" {
 		field.Comment = &ast.CommentGroup{
 			List: []*ast.Comment{
-				{Text: " // " + schema.ColumnComment},
+				{Text: "// " + schema.ColumnComment},
 			},
 		}
 	}

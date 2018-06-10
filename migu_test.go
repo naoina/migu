@@ -692,6 +692,45 @@ func TestDiff(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("column with comment", func(t *testing.T) {
+		before(t)
+		src := strings.Join([]string{
+			"package migu_test",
+			"//+migu",
+			"type User struct {",
+			"	UUID string `migu:\"size:36\"` // Maximum length is 36",
+			"}",
+		}, "\n")
+		results, err := migu.Diff(db, "", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var actual interface{} = results
+		var expect interface{} = []string{
+			strings.Join([]string{
+				"CREATE TABLE `user` (",
+				"  `uuid` VARCHAR(36) NOT NULL COMMENT 'Maximum length is 36'",
+				")",
+			}, "\n"),
+		}
+		if !reflect.DeepEqual(actual, expect) {
+			t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+		}
+		for _, query := range results {
+			if _, err := db.Exec(query); err != nil {
+				t.Fatal(err)
+			}
+		}
+		actual, err = migu.Diff(db, "", src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expect = []string(nil)
+		if !reflect.DeepEqual(actual, expect) {
+			t.Errorf(`migu.Diff(db, "", %#v) => %#v; want %#v`, src, actual, expect)
+		}
+	})
 }
 
 func TestDiffWithSrc(t *testing.T) {
@@ -1182,6 +1221,15 @@ func TestFprint(t *testing.T) {
 		}, "//+migu\n" +
 			"type User struct {\n" +
 			"	Brightness float64 `migu:\"type:float,default:0.1\"`\n" +
+			"}\n\n",
+		},
+		{[]string{
+			"CREATE TABLE user (\n" +
+				"uuid VARCHAR(36) NOT NULL COMMENT 'Maximum length is 36'\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	UUID string `migu:\"type:varchar,size:36\"` // Maximum length is 36\n" +
 			"}\n\n",
 		},
 	} {
