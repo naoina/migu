@@ -736,6 +736,59 @@ func TestDiff(t *testing.T) {
 		}
 	})
 
+	t.Run("notnull tag", func(t *testing.T) {
+		before(t)
+		for _, v := range []struct {
+			i       int
+			columns []string
+			expect  []string
+		}{
+			{1, []string{
+				"Fee float64",
+			}, []string{
+				"CREATE TABLE `user` (\n" +
+					"  `fee` DOUBLE NOT NULL\n" +
+					")",
+			}},
+			{2, []string{
+				"Fee float64 `migu:\"notnull\"`",
+			}, []string(nil)},
+			{3, []string{
+				"Fee *float64 `migu:\"notnull\"`",
+			}, []string(nil)},
+			{4, []string{
+				"Fee *float64",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE",
+			}},
+		} {
+			v := v
+			if !t.Run(fmt.Sprintf("%v", v.i), func(t *testing.T) {
+				src := "package migu_test\n" +
+					"//+migu\n" +
+					"type User struct {\n" +
+					strings.Join(v.columns, "\n") + "\n" +
+					"}"
+				results, err := migu.Diff(db, "", src)
+				if err != nil {
+					t.Fatal(err)
+				}
+				actual := results
+				expect := v.expect
+				if diff := cmp.Diff(actual, expect); diff != "" {
+					t.Fatalf("(-got +want)\n%v", diff)
+				}
+				for _, q := range results {
+					if _, err := db.Exec(q); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}) {
+				return
+			}
+		}
+	})
+
 	t.Run("column with comment", func(t *testing.T) {
 		before(t)
 		src := strings.Join([]string{
@@ -1221,7 +1274,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Active bool `migu:\"type:tinyint(1)\"`\n" +
+			"	Active bool `migu:\"type:tinyint(1),notnull\"`\n" +
 			"}\n\n",
 		},
 		{7, []string{
@@ -1241,7 +1294,7 @@ func TestFprint(t *testing.T) {
 			"\n" +
 			"//+migu\n" +
 			"type User struct {\n" +
-			"	CreatedAt time.Time `migu:\"type:datetime\"`\n" +
+			"	CreatedAt time.Time `migu:\"type:datetime,notnull\"`\n" +
 			"}\n\n",
 		},
 		{9, []string{
@@ -1250,7 +1303,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	UUID string `migu:\"type:char,size:36\"`\n" +
+			"	UUID string `migu:\"type:char,size:36,notnull\"`\n" +
 			"}\n\n",
 		},
 		{10, []string{
@@ -1259,7 +1312,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Balance float64 `migu:\"type:decimal,precision:65,scale:2\"`\n" +
+			"	Balance float64 `migu:\"type:decimal,precision:65,scale:2,notnull\"`\n" +
 			"}\n\n",
 		},
 		{11, []string{
@@ -1268,7 +1321,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Brightness float64 `migu:\"type:float,default:0.1\"`\n" +
+			"	Brightness float64 `migu:\"type:float,default:0.1,notnull\"`\n" +
 			"}\n\n",
 		},
 		{12, []string{
@@ -1277,7 +1330,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	UUID string `migu:\"type:varchar,size:36\"` // Maximum length is 36\n" +
+			"	UUID string `migu:\"type:varchar,size:36,notnull\"` // Maximum length is 36\n" +
 			"}\n\n",
 		},
 	} {

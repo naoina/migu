@@ -263,6 +263,7 @@ type field struct {
 	Size          uint64
 	Extra         string
 	Nullable      bool
+	NotNull       bool
 	Unsigned      bool
 	Precision     int64
 	Scale         int64
@@ -296,7 +297,9 @@ func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) 
 		colType = ret.Type
 	}
 	ret.Unsigned = unsigned
-	ret.Nullable = null
+	if !ret.NotNull {
+		ret.Nullable = null
+	}
 	if ret.Type = d.DataType(colType, ret.Size, ret.Unsigned, ret.Precision, ret.Scale); ret.Type == "" {
 		return nil, fmt.Errorf("unknown data type: `%s'", colType)
 	}
@@ -519,6 +522,7 @@ const (
 	tagSize          = "size"
 	tagColumn        = "column"
 	tagType          = "type"
+	tagNotNull       = "notnull"
 	tagExtra         = "extra"
 	tagPrecision     = "precision"
 	tagScale         = "scale"
@@ -850,6 +854,8 @@ func parseStructTag(d dialect.Dialect, f *field, tag reflect.StructTag) error {
 				return fmt.Errorf("`type` tag must specify the parameter")
 			}
 			f.Type = optval[1]
+		case tagNotNull:
+			f.NotNull = true
 		case tagSize:
 			if len(optval) < 2 {
 				return fmt.Errorf("`size' tag must specify the parameter")
@@ -961,6 +967,9 @@ func (schema *columnSchema) fieldAST(d dialect.Dialect) (*ast.Field, error) {
 	}
 	if schema.hasDatetimePrecision() {
 		tags = append(tags, fmt.Sprintf("%s:%d", tagPrecision, schema.DatetimePrecision.Int64))
+	}
+	if !schema.isNullable() {
+		tags = append(tags, tagNotNull)
 	}
 	if schema.hasExtra() {
 		tags = append(tags, fmt.Sprintf("%s:%s", tagExtra, strings.ToUpper(schema.Extra)))
