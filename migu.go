@@ -948,9 +948,7 @@ func (schema *columnSchema) fieldAST(d dialect.Dialect) (*ast.Field, error) {
 		}
 	}
 	if schema.hasSize() {
-		if *schema.CharacterMaximumLength != defaultVarcharSize {
-			tags = append(tags, fmt.Sprintf("%s:%d", tagSize, *schema.CharacterMaximumLength))
-		}
+		tags = append(tags, fmt.Sprintf("%s:%d", tagSize, *schema.CharacterMaximumLength))
 	}
 	if schema.hasPrecision() {
 		tags = append(tags, fmt.Sprintf("%s:%d", tagPrecision, schema.NumericPrecision.Int64))
@@ -981,6 +979,11 @@ func (schema *columnSchema) fieldAST(d dialect.Dialect) (*ast.Field, error) {
 }
 
 func (schema *columnSchema) GoFieldTypes() (goTypes []string, typ string, err error) {
+	defer func() {
+		if typ == "" {
+			typ = schema.DataType
+		}
+	}()
 	switch schema.DataType {
 	case "tinyint":
 		if schema.isUnsigned() {
@@ -991,9 +994,9 @@ func (schema *columnSchema) GoFieldTypes() (goTypes []string, typ string, err er
 		}
 		if schema.ColumnType == "tinyint(1)" {
 			if schema.isNullable() {
-				return []string{"*bool", "sql.NullBool"}, "", nil
+				return []string{"*bool", "sql.NullBool"}, "tinyint(1)", nil
 			}
-			return []string{"bool"}, "", nil
+			return []string{"bool"}, "tinyint(1)", nil
 		}
 		if schema.isNullable() {
 			return []string{"*int8"}, "", nil
@@ -1042,16 +1045,11 @@ func (schema *columnSchema) GoFieldTypes() (goTypes []string, typ string, err er
 			return []string{"*time.Time"}, "", nil
 		}
 		return []string{"time.Time"}, "", nil
-	case "double":
+	case "double", "decimal":
 		if schema.isNullable() {
 			return []string{"*float64", "sql.NullFloat64", "*float32"}, "", nil
 		}
 		return []string{"float64", "float32"}, "", nil
-	case "decimal":
-		if schema.isNullable() {
-			return []string{"*float64", "sql.NullFloat64", "*float32"}, "decimal", nil
-		}
-		return []string{"float64", "float32"}, "decimal", nil
 	default:
 		return nil, "", fmt.Errorf("BUG: unexpected data type: %s", schema.DataType)
 	}

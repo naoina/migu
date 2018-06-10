@@ -535,6 +535,13 @@ func TestDiff(t *testing.T) {
 			}, []string{
 				"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL, ADD `point` SMALLINT NOT NULL",
 			}},
+			{[]string{
+				"Fee float64",
+				"Point int     `migu:\"type:smallint\"`",
+				"Verified bool `migu:\"type:tinyint(1)\"`",
+			}, []string{
+				"ALTER TABLE `user` ADD `verified` TINYINT(1) NOT NULL",
+			}},
 		} {
 			src := "package migu_test\n" +
 				"//+migu\n" +
@@ -1065,7 +1072,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Name *string\n" +
+			"	Name *string `migu:\"type:varchar,size:255\"`\n" +
 			"}\n\n",
 		},
 		{[]string{
@@ -1075,8 +1082,8 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Name *string\n" +
-			"	Age  *int\n" +
+			"	Name *string `migu:\"type:varchar,size:255\"`\n" +
+			"	Age  *int    `migu:\"type:int\"`\n" +
 			"}\n\n",
 		},
 		{[]string{
@@ -1089,13 +1096,13 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type Post struct {\n" +
-			"	Title   *string\n" +
-			"	Content *string\n" +
+			"	Title   *string `migu:\"type:varchar,size:255\"`\n" +
+			"	Content *string `migu:\"type:varchar,size:255\"`\n" +
 			"}\n" +
 			"\n" +
 			"//+migu\n" +
 			"type User struct {\n" +
-			"	Name *string\n" +
+			"	Name *string `migu:\"type:varchar,size:255\"`\n" +
 			"}\n\n",
 		},
 		{[]string{
@@ -1104,7 +1111,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Active bool\n" +
+			"	Active bool `migu:\"type:tinyint(1)\"`\n" +
 			"}\n\n",
 		},
 		{[]string{
@@ -1113,7 +1120,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Active *bool\n" +
+			"	Active *bool `migu:\"type:tinyint(1)\"`\n" +
 			"}\n\n",
 		},
 		{[]string{
@@ -1124,7 +1131,7 @@ func TestFprint(t *testing.T) {
 			"\n" +
 			"//+migu\n" +
 			"type User struct {\n" +
-			"	CreatedAt time.Time\n" +
+			"	CreatedAt time.Time `migu:\"type:datetime\"`\n" +
 			"}\n\n",
 		},
 		{[]string{
@@ -1133,7 +1140,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	UUID string `migu:\"size:36\"`\n" +
+			"	UUID string `migu:\"type:char,size:36\"`\n" +
 			"}\n\n",
 		},
 		{[]string{
