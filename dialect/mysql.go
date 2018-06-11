@@ -1,11 +1,100 @@
 package dialect
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 )
 
 type MySQL struct {
+	db       *sql.DB
+	dbName   string
+	indexMap map[string]map[string]mysqlIndexInfo
+}
+
+func NewMySQL(db *sql.DB) Dialect {
+	return &MySQL{
+		db: db,
+	}
+}
+
+func (d *MySQL) ColumnSchema(tables ...string) ([]ColumnSchema, error) {
+	dbname, err := d.currentDBName()
+	if err != nil {
+		return nil, err
+	}
+	indexMap, err := d.getIndexMap()
+	if err != nil {
+		return nil, err
+	}
+	parts := []string{
+		"SELECT",
+		"  TABLE_NAME,",
+		"  COLUMN_NAME,",
+		"  COLUMN_DEFAULT,",
+		"  IS_NULLABLE,",
+		"  DATA_TYPE,",
+		"  CHARACTER_MAXIMUM_LENGTH,",
+		"  CHARACTER_OCTET_LENGTH,",
+		"  NUMERIC_PRECISION,",
+		"  NUMERIC_SCALE,",
+		"  DATETIME_PRECISION,",
+		"  COLUMN_TYPE,",
+		"  COLUMN_KEY,",
+		"  EXTRA,",
+		"  COLUMN_COMMENT",
+		"FROM information_schema.COLUMNS",
+		"WHERE TABLE_SCHEMA = ?",
+	}
+	args := []interface{}{dbname}
+	if len(tables) > 0 {
+		placeholder := strings.Repeat(",?", len(tables))
+		placeholder = placeholder[1:] // truncate the heading comma.
+		parts = append(parts, fmt.Sprintf("AND TABLE_NAME IN (%s)", placeholder))
+		for _, t := range tables {
+			args = append(args, t)
+		}
+	}
+	parts = append(parts, "ORDER BY TABLE_NAME, ORDINAL_POSITION")
+	query := strings.Join(parts, "\n")
+	rows, err := d.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var schemas []ColumnSchema
+	for rows.Next() {
+		schema := &mysqlColumnSchema{}
+		if err := rows.Scan(
+			&schema.tableName,
+			&schema.columnName,
+			&schema.columnDefault,
+			&schema.isNullable,
+			&schema.dataType,
+			&schema.characterMaximumLength,
+			&schema.characterOctetLength,
+			&schema.numericPrecision,
+			&schema.numericScale,
+			&schema.datetimePrecision,
+			&schema.columnType,
+			&schema.columnKey,
+			&schema.extra,
+			&schema.columnComment,
+		); err != nil {
+			return nil, err
+		}
+		if tableIndex, exists := indexMap[schema.tableName]; exists {
+			if info, exists := tableIndex[schema.columnName]; exists {
+				schema.nonUnique = info.NonUnique
+				schema.indexName = info.IndexName
+			}
+		}
+		schemas = append(schemas, schema)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return schemas, nil
 }
 
 func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ string, unsigned, null bool) {
@@ -130,4 +219,58 @@ func (d *MySQL) varchar(size uint64) string {
 		return "MEDIUMTEXT"
 	}
 	return "LONGTEXT"
+}
+
+func (d *MySQL) currentDBName() (string, error) {
+	if d.dbName != "" {
+		return d.dbName, nil
+	}
+	err := d.db.QueryRow(`SELECT DATABASE()`).Scan(&d.dbName)
+	return d.dbName, err
+}
+
+func (d *MySQL) getIndexMap() (map[string]map[string]mysqlIndexInfo, error) {
+	if d.indexMap != nil {
+		return d.indexMap, nil
+	}
+	dbname, err := d.currentDBName()
+	if err != nil {
+		return nil, err
+	}
+	query := strings.Join([]string{
+		"SELECT",
+		"  TABLE_NAME,",
+		"  COLUMN_NAME,",
+		"  NON_UNIQUE,",
+		"  INDEX_NAME",
+		"FROM information_schema.STATISTICS",
+		"WHERE TABLE_SCHEMA = ?",
+	}, "\n")
+	rows, err := d.db.Query(query, dbname)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	indexMap := make(map[string]map[string]mysqlIndexInfo)
+	for rows.Next() {
+		var (
+			tableName  string
+			columnName string
+			index      mysqlIndexInfo
+		)
+		if err := rows.Scan(&tableName, &columnName, &index.NonUnique, &index.IndexName); err != nil {
+			return nil, err
+		}
+		if _, exists := indexMap[tableName]; !exists {
+			indexMap[tableName] = make(map[string]mysqlIndexInfo)
+		}
+		indexMap[tableName][columnName] = index
+	}
+	d.indexMap = indexMap
+	return indexMap, rows.Err()
+}
+
+type mysqlIndexInfo struct {
+	NonUnique int64
+	IndexName string
 }

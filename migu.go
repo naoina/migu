@@ -77,7 +77,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			structASTMap[k] = v
 		}
 	}
-	d := &dialect.MySQL{}
+	d := dialect.NewMySQL(db)
 	structMap := map[string]*table{}
 	for name, structAST := range structASTMap {
 		for _, fld := range structAST.StructType.Fields.List {
@@ -107,7 +107,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 	for name := range structMap {
 		names = append(names, name)
 	}
-	tableMap, err := getTableMap(db, names...)
+	tableMap, err := getTableMap(d, names...)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		var oldFields []*field
 		if columns, ok := tableMap[name]; ok {
 			for _, c := range columns {
-				oldFieldAST, err := c.fieldAST(d)
+				oldFieldAST, err := fieldAST(c)
 				if err != nil {
 					return nil, err
 				}
@@ -495,7 +495,8 @@ func makeAlterTableFields(oldFields, newFields []*field) (fields []modifiedField
 
 // Fprint generates Go's structs from database schema and writes to output.
 func Fprint(output io.Writer, db *sql.DB) error {
-	tableMap, err := getTableMap(db)
+	d := dialect.NewMySQL(db)
+	tableMap, err := getTableMap(d)
 	if err != nil {
 		return err
 	}
@@ -509,7 +510,6 @@ func Fprint(output io.Writer, db *sql.DB) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	d := &dialect.MySQL{}
 	for _, name := range names {
 		s, err := makeStructAST(d, name, tableMap[name])
 		if err != nil {
@@ -539,127 +539,16 @@ const (
 	tagIgnore        = "-"
 )
 
-func getTableMap(db *sql.DB, tables ...string) (map[string][]*columnSchema, error) {
-	dbname, err := getCurrentDBName(db)
+func getTableMap(d dialect.Dialect, tables ...string) (map[string][]dialect.ColumnSchema, error) {
+	schemas, err := d.ColumnSchema(tables...)
 	if err != nil {
 		return nil, err
 	}
-	indexMap, err := getIndexMap(db, dbname)
-	if err != nil {
-		return nil, err
-	}
-	parts := []string{
-		"SELECT",
-		"  TABLE_NAME,",
-		"  COLUMN_NAME,",
-		"  COLUMN_DEFAULT,",
-		"  IS_NULLABLE,",
-		"  DATA_TYPE,",
-		"  CHARACTER_MAXIMUM_LENGTH,",
-		"  CHARACTER_OCTET_LENGTH,",
-		"  NUMERIC_PRECISION,",
-		"  NUMERIC_SCALE,",
-		"  DATETIME_PRECISION,",
-		"  COLUMN_TYPE,",
-		"  COLUMN_KEY,",
-		"  EXTRA,",
-		"  COLUMN_COMMENT",
-		"FROM information_schema.COLUMNS",
-		"WHERE TABLE_SCHEMA = ?",
-	}
-	args := []interface{}{dbname}
-	if len(tables) > 0 {
-		placeholder := strings.Repeat(",?", len(tables))
-		placeholder = placeholder[1:] // truncate the heading comma.
-		parts = append(parts, fmt.Sprintf("AND TABLE_NAME IN (%s)", placeholder))
-		for _, t := range tables {
-			args = append(args, t)
-		}
-	}
-	parts = append(parts, "ORDER BY TABLE_NAME, ORDINAL_POSITION")
-	query := strings.Join(parts, "\n")
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	tableMap := map[string][]*columnSchema{}
-	for rows.Next() {
-		schema := &columnSchema{}
-		if err := rows.Scan(
-			&schema.TableName,
-			&schema.ColumnName,
-			&schema.ColumnDefault,
-			&schema.IsNullable,
-			&schema.DataType,
-			&schema.CharacterMaximumLength,
-			&schema.CharacterOctetLength,
-			&schema.NumericPrecision,
-			&schema.NumericScale,
-			&schema.DatetimePrecision,
-			&schema.ColumnType,
-			&schema.ColumnKey,
-			&schema.Extra,
-			&schema.ColumnComment,
-		); err != nil {
-			return nil, err
-		}
-		tableMap[schema.TableName] = append(tableMap[schema.TableName], schema)
-		if tableIndex, exists := indexMap[schema.TableName]; exists {
-			if info, exists := tableIndex[schema.ColumnName]; exists {
-				schema.NonUnique = info.NonUnique
-				schema.IndexName = info.IndexName
-			}
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+	tableMap := map[string][]dialect.ColumnSchema{}
+	for _, s := range schemas {
+		tableMap[s.TableName()] = append(tableMap[s.TableName()], s)
 	}
 	return tableMap, nil
-}
-
-func getCurrentDBName(db *sql.DB) (string, error) {
-	var dbname sql.NullString
-	err := db.QueryRow(`SELECT DATABASE()`).Scan(&dbname)
-	return dbname.String, err
-}
-
-type indexInfo struct {
-	NonUnique int64
-	IndexName string
-}
-
-func getIndexMap(db *sql.DB, dbname string) (map[string]map[string]indexInfo, error) {
-	query := strings.Join([]string{
-		"SELECT",
-		"  TABLE_NAME,",
-		"  COLUMN_NAME,",
-		"  NON_UNIQUE,",
-		"  INDEX_NAME",
-		"FROM information_schema.STATISTICS",
-		"WHERE TABLE_SCHEMA = ?",
-	}, "\n")
-	rows, err := db.Query(query, dbname)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	indexMap := make(map[string]map[string]indexInfo)
-	for rows.Next() {
-		var (
-			tableName  string
-			columnName string
-			index      indexInfo
-		)
-		if err := rows.Scan(&tableName, &columnName, &index.NonUnique, &index.IndexName); err != nil {
-			return nil, err
-		}
-		if _, exists := indexMap[tableName]; !exists {
-			indexMap[tableName] = make(map[string]indexInfo)
-		}
-		indexMap[tableName][columnName] = index
-	}
-	return indexMap, rows.Err()
 }
 
 func formatDefault(d dialect.Dialect, t, def string) string {
@@ -775,10 +664,10 @@ func columnSQL(d dialect.Dialect, f *field) string {
 	return strings.Join(column, " ")
 }
 
-func hasDatetimeColumn(t map[string][]*columnSchema) bool {
+func hasDatetimeColumn(t map[string][]dialect.ColumnSchema) bool {
 	for _, schemas := range t {
 		for _, schema := range schemas {
-			if schema.DataType == "datetime" {
+			if schema.IsDatetime() {
 				return true
 			}
 		}
@@ -800,10 +689,10 @@ func importAST(pkg string) ast.Decl {
 	}
 }
 
-func makeStructAST(d dialect.Dialect, name string, schemas []*columnSchema) (ast.Decl, error) {
+func makeStructAST(d dialect.Dialect, name string, schemas []dialect.ColumnSchema) (ast.Decl, error) {
 	var fields []*ast.Field
 	for _, schema := range schemas {
-		f, err := schema.fieldAST(d)
+		f, err := fieldAST(schema)
 		if err != nil {
 			return nil, err
 		}
@@ -905,84 +794,51 @@ func parseStructTag(d dialect.Dialect, f *field, tag reflect.StructTag) error {
 	return nil
 }
 
-type columnSchema struct {
-	TableName              string
-	ColumnName             string
-	OrdinalPosition        int64
-	ColumnDefault          sql.NullString
-	IsNullable             string
-	DataType               string
-	CharacterMaximumLength *uint64
-	CharacterOctetLength   sql.NullInt64
-	NumericPrecision       sql.NullInt64
-	NumericScale           sql.NullInt64
-	DatetimePrecision      sql.NullInt64
-	ColumnType             string
-	ColumnKey              string
-	Extra                  string
-	ColumnComment          string
-	NonUnique              int64
-	IndexName              string
-}
-
-func (schema *columnSchema) fieldAST(d dialect.Dialect) (*ast.Field, error) {
-	goTypes, typ, err := schema.GoFieldTypes()
-	if err != nil {
-		return nil, err
-	}
+func fieldAST(schema dialect.ColumnSchema) (*ast.Field, error) {
 	field := &ast.Field{
 		Names: []*ast.Ident{
-			ast.NewIdent(stringutil.ToUpperCamelCase(schema.ColumnName)),
+			ast.NewIdent(stringutil.ToUpperCamelCase(schema.ColumnName())),
 		},
-		Type: ast.NewIdent(goTypes[0]),
+		Type: ast.NewIdent(schema.GoType()),
 	}
 	var tags []string
-	if typ != "" {
-		tags = append(tags, fmt.Sprintf("%s:%s", tagType, typ))
+	tags = append(tags, fmt.Sprintf("%s:%s", tagType, schema.DataType()))
+	if v, ok := schema.Default(); ok {
+		tags = append(tags, tagDefault+":"+v)
 	}
-	if schema.ColumnDefault.Valid && (schema.ColumnType != "datetime" || schema.ColumnDefault.String != "0000-00-00 00:00:00") {
-		tags = append(tags, tagDefault+":"+schema.ColumnDefault.String)
-	}
-	if schema.hasPrimaryKey() {
+	if schema.IsPrimaryKey() {
 		tags = append(tags, tagPrimaryKey)
 	}
-	if schema.hasAutoIncrement() {
+	if schema.IsAutoIncrement() {
 		tags = append(tags, tagAutoIncrement)
 	}
-	if schema.hasIndex() {
-		if schema.IndexName == schema.ColumnName {
-			tags = append(tags, tagIndex)
+	if index := schema.Index(); index != nil {
+		var tag string
+		if index.Unique {
+			tag = tagUnique
 		} else {
-			tags = append(tags, fmt.Sprintf("%s:%s", tagIndex, schema.IndexName))
+			tag = tagIndex
+		}
+		if index.Name == schema.ColumnName() {
+			tags = append(tags, tag)
+		} else {
+			tags = append(tags, fmt.Sprintf("%s:%s", tag, index.Name))
 		}
 	}
-	if schema.hasUniqueKey() {
-		if schema.IndexName == schema.ColumnName {
-			tags = append(tags, tagUnique)
-		} else {
-			tags = append(tags, fmt.Sprintf("%s:%s", tagUnique, schema.IndexName))
-		}
+	if v, ok := schema.Size(); ok {
+		tags = append(tags, fmt.Sprintf("%s:%d", tagSize, v))
 	}
-	if schema.hasSize() {
-		tags = append(tags, fmt.Sprintf("%s:%d", tagSize, *schema.CharacterMaximumLength))
+	if v, ok := schema.Precision(); ok {
+		tags = append(tags, fmt.Sprintf("%s:%d", tagPrecision, v))
 	}
-	if schema.hasOctetSize() {
-		tags = append(tags, fmt.Sprintf("%s:%d", tagSize, schema.CharacterOctetLength.Int64))
+	if v, ok := schema.Scale(); ok {
+		tags = append(tags, fmt.Sprintf("%s:%d", tagScale, v))
 	}
-	if schema.hasPrecision() {
-		tags = append(tags, fmt.Sprintf("%s:%d", tagPrecision, schema.NumericPrecision.Int64))
-	}
-	if schema.hasScale() {
-		tags = append(tags, fmt.Sprintf("%s:%d", tagScale, schema.NumericScale.Int64))
-	}
-	if schema.hasDatetimePrecision() {
-		tags = append(tags, fmt.Sprintf("%s:%d", tagPrecision, schema.DatetimePrecision.Int64))
-	}
-	if !schema.isNullable() {
+	if !schema.IsNullable() {
 		tags = append(tags, tagNotNull)
 	}
-	if schema.hasExtra() {
-		tags = append(tags, fmt.Sprintf("%s:%s", tagExtra, strings.ToUpper(schema.Extra)))
+	if v, ok := schema.Extra(); ok {
+		tags = append(tags, fmt.Sprintf("%s:%s", tagExtra, v))
 	}
 	if len(tags) > 0 {
 		field.Tag = &ast.BasicLit{
@@ -991,146 +847,12 @@ func (schema *columnSchema) fieldAST(d dialect.Dialect) (*ast.Field, error) {
 			ValuePos: 1,
 		}
 	}
-	if schema.ColumnComment != "" {
+	if v, ok := schema.Comment(); ok {
 		field.Comment = &ast.CommentGroup{
 			List: []*ast.Comment{
-				{Text: "// " + schema.ColumnComment},
+				{Text: "// " + v},
 			},
 		}
 	}
 	return field, nil
-}
-
-func (schema *columnSchema) GoFieldTypes() (goTypes []string, typ string, err error) {
-	defer func() {
-		if typ == "" {
-			typ = schema.DataType
-		}
-	}()
-	switch schema.DataType {
-	case "tinyint":
-		if schema.isUnsigned() {
-			if schema.isNullable() {
-				return []string{"*uint8"}, "", nil
-			}
-			return []string{"uint8"}, "", nil
-		}
-		if schema.ColumnType == "tinyint(1)" {
-			if schema.isNullable() {
-				return []string{"*bool", "sql.NullBool"}, "tinyint(1)", nil
-			}
-			return []string{"bool"}, "tinyint(1)", nil
-		}
-		if schema.isNullable() {
-			return []string{"*int8"}, "", nil
-		}
-		return []string{"int8"}, "", nil
-	case "smallint":
-		if schema.isUnsigned() {
-			if schema.isNullable() {
-				return []string{"*uint16"}, "", nil
-			}
-			return []string{"uint16"}, "", nil
-		}
-		if schema.isNullable() {
-			return []string{"*int16"}, "", nil
-		}
-		return []string{"int16"}, "", nil
-	case "mediumint", "int":
-		if schema.isUnsigned() {
-			if schema.isNullable() {
-				return []string{"*uint", "*uint32"}, "", nil
-			}
-			return []string{"uint", "uint32"}, "", nil
-		}
-		if schema.isNullable() {
-			return []string{"*int", "*int32"}, "", nil
-		}
-		return []string{"int", "int32"}, "", nil
-	case "bigint":
-		if schema.isUnsigned() {
-			if schema.isNullable() {
-				return []string{"*uint64"}, "", nil
-			}
-			return []string{"uint64"}, "", nil
-		}
-		if schema.isNullable() {
-			return []string{"*int64", "sql.NullInt64"}, "", nil
-		}
-		return []string{"int64"}, "", nil
-	case "varchar", "text", "mediumtext", "longtext", "char":
-		if schema.isNullable() {
-			return []string{"*string", "sql.NullString", "[]byte"}, "", nil
-		}
-		return []string{"string", "[]byte"}, "", nil
-	case "varbinary", "binary":
-		return []string{"[]byte"}, "", nil
-	case "datetime":
-		if schema.isNullable() {
-			return []string{"*time.Time"}, "", nil
-		}
-		return []string{"time.Time"}, "", nil
-	case "double", "float", "decimal":
-		if schema.isNullable() {
-			return []string{"*float64", "sql.NullFloat64", "*float32"}, "", nil
-		}
-		return []string{"float64", "float32"}, "", nil
-	default:
-		return nil, "", fmt.Errorf("BUG: unexpected data type: %s", schema.DataType)
-	}
-}
-
-func (schema *columnSchema) isUnsigned() bool {
-	return strings.Contains(schema.ColumnType, "unsigned")
-}
-
-func (schema *columnSchema) isNullable() bool {
-	return strings.ToUpper(schema.IsNullable) == "YES"
-}
-
-func (schema *columnSchema) hasPrimaryKey() bool {
-	return schema.ColumnKey == "PRI" && strings.ToUpper(schema.IndexName) == "PRIMARY"
-}
-
-func (schema *columnSchema) hasAutoIncrement() bool {
-	return schema.Extra == "auto_increment"
-}
-
-func (schema *columnSchema) hasExtra() bool {
-	return schema.Extra != "" && !schema.hasAutoIncrement()
-}
-
-func (schema *columnSchema) hasIndex() bool {
-	return schema.IndexName != "" && !schema.hasPrimaryKey() && schema.NonUnique != 0
-}
-
-func (schema *columnSchema) hasUniqueKey() bool {
-	return schema.IndexName != "" && !schema.hasPrimaryKey() && schema.NonUnique == 0
-}
-
-func (schema *columnSchema) hasSize() bool {
-	return (schema.DataType == "varchar" || schema.DataType == "char") && schema.CharacterMaximumLength != nil
-}
-
-func (schema *columnSchema) hasOctetSize() bool {
-	return (schema.DataType == "varbinary" || schema.DataType == "binary") && schema.CharacterOctetLength.Valid
-}
-
-func (schema *columnSchema) hasPrecision() bool {
-	return schema.DataType == "decimal" && schema.NumericPrecision.Valid && schema.NumericPrecision.Int64 > 0
-}
-
-func (schema *columnSchema) hasScale() bool {
-	switch schema.DataType {
-	case "decimal":
-		return schema.NumericScale.Valid && schema.NumericScale.Int64 > 0
-	case "double":
-		return schema.NumericScale.Valid
-	}
-	return false
-}
-
-func (schema *columnSchema) hasDatetimePrecision() bool {
-	return inStrings([]string{"datetime", "timestamp", "time"}, schema.DataType) && schema.DatetimePrecision.Valid && schema.DatetimePrecision.Int64 > 0
-
 }
