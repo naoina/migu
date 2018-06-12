@@ -812,17 +812,17 @@ func fieldAST(schema dialect.ColumnSchema) (*ast.Field, error) {
 	if schema.IsAutoIncrement() {
 		tags = append(tags, tagAutoIncrement)
 	}
-	if index := schema.Index(); index != nil {
+	if v, unique, ok := schema.Index(); ok {
 		var tag string
-		if index.Unique {
+		if unique {
 			tag = tagUnique
 		} else {
 			tag = tagIndex
 		}
-		if index.Name == schema.ColumnName() {
+		if v == schema.ColumnName() {
 			tags = append(tags, tag)
 		} else {
-			tags = append(tags, fmt.Sprintf("%s:%s", tag, index.Name))
+			tags = append(tags, fmt.Sprintf("%s:%s", tag, v))
 		}
 	}
 	if v, ok := schema.Size(); ok {

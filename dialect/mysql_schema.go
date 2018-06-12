@@ -127,14 +127,11 @@ func (schema *mysqlColumnSchema) IsAutoIncrement() bool {
 	return schema.extra == "auto_increment"
 }
 
-func (schema *mysqlColumnSchema) Index() *Index {
+func (schema *mysqlColumnSchema) Index() (name string, unique bool, ok bool) {
 	if schema.indexName != "" && !schema.IsPrimaryKey() {
-		return &Index{
-			Name:   schema.indexName,
-			Unique: schema.nonUnique == 0,
-		}
+		return schema.indexName, schema.nonUnique == 0, true
 	}
-	return nil
+	return "", false, false
 }
 
 func (schema *mysqlColumnSchema) Default() (string, bool) {

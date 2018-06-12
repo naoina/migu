@@ -8,7 +8,7 @@ type ColumnSchema interface {
 	IsDatetime() bool
 	IsPrimaryKey() bool
 	IsAutoIncrement() bool
-	Index() *Index
+	Index() (name string, unique bool, ok bool)
 	Default() (string, bool)
 	Size() (int64, bool)
 	Precision() (int64, bool)
@@ -16,9 +16,4 @@ type ColumnSchema interface {
 	IsNullable() bool
 	Extra() (string, bool)
 	Comment() (string, bool)
-}
-
-type Index struct {
-	Name   string
-	Unique bool
 }
