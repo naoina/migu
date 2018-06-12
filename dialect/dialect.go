@@ -8,8 +8,3 @@ type Dialect interface {
 	QuoteString(s string) string
 	AutoIncrement() string
 }
-
-type Index struct {
-	Name   string
-	Unique bool
-}

@@ -17,3 +17,8 @@ type ColumnSchema interface {
 	Extra() (string, bool)
 	Comment() (string, bool)
 }
+
+type Index struct {
+	Name   string
+	Unique bool
+}
