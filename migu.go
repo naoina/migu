@@ -342,12 +342,10 @@ func (f *field) IsDifferent(another *field) bool {
 		f.Type != another.Type ||
 		f.Nullable != another.Nullable ||
 		f.Default != another.Default ||
-		f.Size != another.Size ||
 		f.Column != another.Column ||
 		f.Extra != another.Extra ||
 		f.Comment != another.Comment ||
-		f.AutoIncrement != another.AutoIncrement ||
-		(f.Type == "DECIMAL" && (f.Precision != another.Precision || f.Scale != another.Scale))
+		f.AutoIncrement != another.AutoIncrement
 }
 
 func (f *field) IsEmbedded() bool {
