@@ -45,7 +45,7 @@ func TestDiff(t *testing.T) {
 			column string
 		}{
 			{"Name string"},
-			{"Name string `migu:\"size:255\"`"},
+			{"Name string `migu:\"type:varchar(255)\"`"},
 		} {
 			v := v
 			t.Run(fmt.Sprintf("%v", v.column), func(t *testing.T) {
@@ -96,7 +96,7 @@ func TestDiff(t *testing.T) {
 		var expect interface{} = []string{
 			strings.Join([]string{
 				"CREATE TABLE `user` (",
-				"  `id` BIGINT UNSIGNED NOT NULL,",
+				"  `id` BIGINT(20) UNSIGNED NOT NULL,",
 				"  PRIMARY KEY (`id`)",
 				")",
 			}, "\n"),
@@ -137,8 +137,8 @@ func TestDiff(t *testing.T) {
 		var expect interface{} = []string{
 			strings.Join([]string{
 				"CREATE TABLE `user` (",
-				"  `user_id` BIGINT UNSIGNED NOT NULL,",
-				"  `profile_id` BIGINT UNSIGNED NOT NULL,",
+				"  `user_id` BIGINT(20) UNSIGNED NOT NULL,",
+				"  `profile_id` BIGINT(20) UNSIGNED NOT NULL,",
 				"  PRIMARY KEY (`user_id`, `profile_id`)",
 				")",
 			}, "\n"),
@@ -173,7 +173,7 @@ func TestDiff(t *testing.T) {
 				"CreatedAt time.Time",
 			}, []string{
 				"CREATE TABLE `user` (\n" +
-					"  `age` INT NOT NULL,\n" +
+					"  `age` INT(11) NOT NULL,\n" +
 					"  `created_at` DATETIME NOT NULL\n" +
 					")",
 				"CREATE INDEX `age` ON `user` (`age`)",
@@ -291,7 +291,7 @@ func TestDiff(t *testing.T) {
 		}
 		expect := []string{
 			"CREATE TABLE `user` (\n" +
-				"  `age` INT NOT NULL\n" +
+				"  `age` INT(11) NOT NULL\n" +
 				")",
 			"CREATE UNIQUE INDEX `age` ON `user` (`age`)",
 		}
@@ -312,7 +312,7 @@ func TestDiff(t *testing.T) {
 				"CreatedAt time.Time `migu:\"unique:age_created_at_unique_index\"`",
 			}, []string{
 				"CREATE TABLE `user` (\n" +
-					"  `age` INT NOT NULL,\n" +
+					"  `age` INT(11) NOT NULL,\n" +
 					"  `created_at` DATETIME NOT NULL\n" +
 					")",
 				"CREATE UNIQUE INDEX `age_created_at_unique_index` ON `user` (`age`,`created_at`)",
@@ -364,7 +364,7 @@ func TestDiff(t *testing.T) {
 				"Age int",
 			}, []string{
 				"CREATE TABLE `user` (\n" +
-					"  `age` INT NOT NULL\n" +
+					"  `age` INT(11) NOT NULL\n" +
 					")",
 			}},
 			{2, []string{
@@ -377,20 +377,20 @@ func TestDiff(t *testing.T) {
 				"Age uint8 `migu:\"column:col_a\"`",
 				"CreatedAt time.Time",
 			}, []string{
-				"ALTER TABLE `user` CHANGE `age` `col_a` TINYINT UNSIGNED NOT NULL",
+				"ALTER TABLE `user` CHANGE `age` `col_a` TINYINT(4) UNSIGNED NOT NULL",
 			}},
 			{4, []string{
 				"Age uint8 `migu:\"column:col_b\"`",
 				"CreatedAt time.Time",
 			}, []string{
-				"ALTER TABLE `user` ADD `col_b` TINYINT UNSIGNED NOT NULL, DROP `col_a`",
+				"ALTER TABLE `user` ADD `col_b` TINYINT(4) UNSIGNED NOT NULL, DROP `col_a`",
 			}},
 			{5, []string{
 				"Age uint8",
 				"Old uint8 `migu:\"column:col_b\"`",
 				"CreatedAt time.Time",
 			}, []string{
-				"ALTER TABLE `user` ADD `age` TINYINT UNSIGNED NOT NULL",
+				"ALTER TABLE `user` ADD `age` TINYINT(4) UNSIGNED NOT NULL",
 			}},
 		} {
 			v := v
@@ -472,7 +472,7 @@ func TestDiff(t *testing.T) {
 		}
 		expect := []string{
 			"CREATE TABLE `user` (\n" +
-				"  `age` INT NOT NULL\n" +
+				"  `age` INT(11) NOT NULL\n" +
 				")",
 		}
 		if diff := cmp.Diff(actual, expect); diff != "" {
@@ -542,198 +542,125 @@ func TestDiff(t *testing.T) {
 	})
 
 	t.Run("type tag", func(t *testing.T) {
-		before(t)
-		for _, v := range []struct {
-			i       int
-			columns []string
-			expect  []string
-		}{
-			{1, []string{
-				"Fee float64 `migu:\"type:tinyint\"`",
-			}, []string{
-				"CREATE TABLE `user` (\n" +
-					"  `fee` TINYINT NOT NULL\n" +
-					")",
-			}},
-			{2, []string{
-				"Fee float64 `migu:\"type:int\"`",
-			}, []string{
-				"ALTER TABLE `user` CHANGE `fee` `fee` INT NOT NULL",
-			}},
-			{3, []string{
-				"Fee float64",
-				"Point int `migu:\"type:smallint\"`",
-			}, []string{
-				"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL, ADD `point` SMALLINT NOT NULL",
-			}},
-			{4, []string{
-				"Fee float64",
-				"Point int     `migu:\"type:smallint\"`",
-				"Verified bool `migu:\"type:tinyint(1)\"`",
-			}, []string{
-				"ALTER TABLE `user` ADD `verified` TINYINT(1) NOT NULL",
-			}},
-		} {
-			v := v
-			if !t.Run(fmt.Sprintf("%v", v.i), func(t *testing.T) {
-				src := "package migu_test\n" +
-					"//+migu\n" +
-					"type User struct {\n" +
-					strings.Join(v.columns, "\n") + "\n" +
-					"}"
-				results, err := migu.Diff(db, "", src)
-				if err != nil {
-					t.Fatal(err)
-				}
-				actual := results
-				expect := v.expect
-				if diff := cmp.Diff(actual, expect); diff != "" {
-					t.Fatalf("(-got +want)\n%v", diff)
-				}
-				for _, q := range results {
-					if _, err := db.Exec(q); err != nil {
+		t.Run("sequential", func(t *testing.T) {
+			before(t)
+			for _, v := range []struct {
+				i       int
+				columns []string
+				expect  []string
+			}{
+				{1, []string{
+					"Fee float64 `migu:\"type:tinyint\"`",
+				}, []string{
+					"CREATE TABLE `user` (\n" +
+						"  `fee` TINYINT(4) NOT NULL\n" +
+						")",
+				}},
+				{2, []string{
+					"Fee float64 `migu:\"type:int\"`",
+				}, []string{
+					"ALTER TABLE `user` CHANGE `fee` `fee` INT(11) NOT NULL",
+				}},
+				{3, []string{
+					"Fee float64",
+					"Point int `migu:\"type:smallint\"`",
+				}, []string{
+					"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL, ADD `point` SMALLINT(6) NOT NULL",
+				}},
+				{4, []string{
+					"Fee float64",
+					"Point int     `migu:\"type:smallint\"`",
+					"Verified bool `migu:\"type:tinyint(1)\"`",
+				}, []string{
+					"ALTER TABLE `user` ADD `verified` TINYINT(1) NOT NULL",
+				}},
+			} {
+				v := v
+				if !t.Run(fmt.Sprintf("%v", v.i), func(t *testing.T) {
+					src := "package migu_test\n" +
+						"//+migu\n" +
+						"type User struct {\n" +
+						strings.Join(v.columns, "\n") + "\n" +
+						"}"
+					results, err := migu.Diff(db, "", src)
+					if err != nil {
 						t.Fatal(err)
 					}
+					actual := results
+					expect := v.expect
+					if diff := cmp.Diff(actual, expect); diff != "" {
+						t.Fatalf("(-got +want)\n%v", diff)
+					}
+					for _, q := range results {
+						if _, err := db.Exec(q); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}) {
+					return
 				}
-			}) {
-				return
 			}
-		}
-	})
+		})
 
-	t.Run("precision tag", func(t *testing.T) {
-		before(t)
-		for _, v := range []struct {
-			i       int
-			columns []string
-			expect  []string
-		}{
-			{1, []string{
-				"Fee float64 `migu:\"type:decimal,precision:60\"`",
-				"Point int `migu:\"precision:11\"`",
-			}, []string{
-				"CREATE TABLE `user` (\n" +
-					"  `fee` DECIMAL(60) NOT NULL,\n" +
-					"  `point` INT NOT NULL\n" +
-					")",
-			}},
-			{2, []string{
-				"Fee float64 `migu:\"type:decimal,precision:65\"`",
-				"Point int `migu:\"precision:12\"`",
-			}, []string{
-				"ALTER TABLE `user` CHANGE `fee` `fee` DECIMAL(65) NOT NULL",
-			}},
-			{3, []string{
-				"Fee float64",
-				"Point int",
-				"Balance float64 `migu:\"type:decimal,precision:20\"`",
-			}, []string{
-				"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL, ADD `balance` DECIMAL(20) NOT NULL",
-			}},
-			{4, []string{
-				"Fee float64",
-				"Point int",
-				"Balance float64 `migu:\"type:decimal,precision:20\"`",
-			}, []string(nil)},
-			{5, []string{
-				"Fee float64",
-				"Point int",
-				"Balance float64 `migu:\"type:decimal,precision:20\"`",
-				"UpdatedAt time.Time `migu:\"precision:6\"`",
-			}, []string{
-				"ALTER TABLE `user` ADD `updated_at` DATETIME(6) NOT NULL",
-			}},
-			{6, []string{
-				"Fee float64",
-				"Point int",
-				"Balance float64 `migu:\"type:decimal,precision:20\"`",
-				"UpdatedAt time.Time",
-			}, []string{
-				"ALTER TABLE `user` CHANGE `updated_at` `updated_at` DATETIME NOT NULL",
-			}},
-		} {
-			v := v
-			if !t.Run(fmt.Sprintf("%v", v.i), func(t *testing.T) {
-				src := "package migu_test\n" +
-					"//+migu\n" +
-					"type User struct {\n" +
-					strings.Join(v.columns, "\n") + "\n" +
-					"}"
-				results, err := migu.Diff(db, "", src)
-				if err != nil {
-					t.Fatal(err)
-				}
-				actual := results
-				expect := v.expect
-				if diff := cmp.Diff(actual, expect); diff != "" {
-					t.Fatalf("(-got +want)\n%v", diff)
-				}
-				for _, q := range results {
-					if _, err := db.Exec(q); err != nil {
+		t.Run("all types", func(t *testing.T) {
+			for _, v := range []struct {
+				name string
+			}{
+				{"int"},
+				{"tinyint"},
+				{"smallint"},
+				{"mediumint"},
+				{"bigint"},
+				{"decimal"},
+				{"double"},
+				{"float"},
+				{"date"},
+				{"datetime"},
+				// {"timestamp"},
+				{"time"},
+				{"year"},
+				{"char"},
+				{"varchar"},
+				{"binary"},
+				{"varbinary"},
+				{"tinyblob"},
+				{"tinytext"},
+				{"blob"},
+				{"text"},
+				{"mediumblob"},
+				{"mediumtext"},
+				{"longblob"},
+				{"longtext"},
+			} {
+				v := v
+				t.Run(fmt.Sprintf("type:%v", v.name), func(t *testing.T) {
+					before(t)
+					src := "package migu_test\n" +
+						"//+migu\n" +
+						"type User struct {\n" +
+						fmt.Sprintf("	A string `migu:\"type:%s\"`\n", v.name) +
+						"}"
+					results, err := migu.Diff(db, "", src)
+					if err != nil {
 						t.Fatal(err)
 					}
-				}
-			}) {
-				return
-			}
-		}
-	})
-
-	t.Run("scale tag", func(t *testing.T) {
-		before(t)
-		for _, v := range []struct {
-			i       int
-			columns []string
-			expect  []string
-		}{
-			{1, []string{
-				"Fee float64 `migu:\"type:decimal,precision:60,scale:2\"`",
-				"Point int `migu:\"precision:11,scale:3\"`",
-			}, []string{
-				"CREATE TABLE `user` (\n" +
-					"  `fee` DECIMAL(60,2) NOT NULL,\n" +
-					"  `point` INT NOT NULL\n" +
-					")",
-			}},
-			{2, []string{
-				"Fee float64 `migu:\"type:decimal,precision:65,scale:3\"`",
-				"Point int `migu:\"precision:12,scale:2\"`",
-			}, []string{
-				"ALTER TABLE `user` CHANGE `fee` `fee` DECIMAL(65,3) NOT NULL",
-			}},
-			{3, []string{
-				"Fee float64",
-				"Point int",
-				"Balance float64 `migu:\"type:decimal,precision:20,scale:1\"`",
-			}, []string{
-				"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL, ADD `balance` DECIMAL(20,1) NOT NULL",
-			}},
-		} {
-			v := v
-			if !t.Run(fmt.Sprintf("%v", v.i), func(t *testing.T) {
-				src := "package migu_test\n" +
-					"//+migu\n" +
-					"type User struct {\n" +
-					strings.Join(v.columns, "\n") + "\n" +
-					"}"
-				results, err := migu.Diff(db, "", src)
-				if err != nil {
-					t.Fatal(err)
-				}
-				actual := results
-				expect := v.expect
-				if diff := cmp.Diff(actual, expect); diff != "" {
-					t.Fatalf("(-got +want)\n%v", diff)
-				}
-				for _, q := range results {
-					if _, err := db.Exec(q); err != nil {
+					for _, q := range results {
+						if _, err := db.Exec(q); err != nil {
+							t.Fatal(err)
+						}
+					}
+					results, err = migu.Diff(db, "", src)
+					if err != nil {
 						t.Fatal(err)
 					}
-				}
-			}) {
-				return
+					var actual interface{} = results
+					var expect interface{} = []string(nil)
+					if diff := cmp.Diff(actual, expect); diff != "" {
+						t.Errorf("(-got +want)\n%v", diff)
+					}
+				})
 			}
-		}
+		})
 	})
 
 	t.Run("null tag", func(t *testing.T) {
@@ -795,7 +722,7 @@ func TestDiff(t *testing.T) {
 			"package migu_test",
 			"//+migu",
 			"type User struct {",
-			"	UUID string `migu:\"size:36\"` // Maximum length is 36",
+			"	UUID string `migu:\"type:varchar(36)\"` // Maximum length is 36",
 			"}",
 		}, "\n")
 		results, err := migu.Diff(db, "", src)
@@ -835,7 +762,7 @@ func TestDiff(t *testing.T) {
 			"type UUID struct {}",
 			"//+migu",
 			"type User struct {",
-			"	UUID UUID `migu:\"type:varbinary,size:36\"`",
+			"	UUID UUID `migu:\"type:varbinary(36)\"`",
 			"}",
 		}, "\n")
 		results, err := migu.Diff(db, "", src)
@@ -846,7 +773,7 @@ func TestDiff(t *testing.T) {
 		var expect interface{} = []string{
 			strings.Join([]string{
 				"CREATE TABLE `user` (",
-				"  `uuid` VARBINARY(36)",
+				"  `uuid` VARBINARY(36) NOT NULL",
 				")",
 			}, "\n"),
 		}
@@ -872,30 +799,30 @@ func TestDiff(t *testing.T) {
 func TestDiffWithSrc(t *testing.T) {
 	before(t)
 	types := map[string]string{
-		"int":             "INT NOT NULL",
-		"int8":            "TINYINT NOT NULL",
-		"int16":           "SMALLINT NOT NULL",
-		"int32":           "INT NOT NULL",
-		"int64":           "BIGINT NOT NULL",
-		"*int":            "INT",
-		"*int8":           "TINYINT",
-		"*int16":          "SMALLINT",
-		"*int32":          "INT",
-		"*int64":          "BIGINT",
-		"uint":            "INT UNSIGNED NOT NULL",
-		"uint8":           "TINYINT UNSIGNED NOT NULL",
-		"uint16":          "SMALLINT UNSIGNED NOT NULL",
-		"uint32":          "INT UNSIGNED NOT NULL",
-		"uint64":          "BIGINT UNSIGNED NOT NULL",
-		"*uint":           "INT UNSIGNED",
-		"*uint8":          "TINYINT UNSIGNED",
-		"*uint16":         "SMALLINT UNSIGNED",
-		"*uint32":         "INT UNSIGNED",
-		"*uint64":         "BIGINT UNSIGNED",
-		"sql.NullInt64":   "BIGINT",
+		"int":             "INT(11) NOT NULL",
+		"int8":            "TINYINT(4) NOT NULL",
+		"int16":           "SMALLINT(6) NOT NULL",
+		"int32":           "INT(11) NOT NULL",
+		"int64":           "BIGINT(20) NOT NULL",
+		"*int":            "INT(11)",
+		"*int8":           "TINYINT(4)",
+		"*int16":          "SMALLINT(6)",
+		"*int32":          "INT(11)",
+		"*int64":          "BIGINT(20)",
+		"uint":            "INT(11) UNSIGNED NOT NULL",
+		"uint8":           "TINYINT(4) UNSIGNED NOT NULL",
+		"uint16":          "SMALLINT(6) UNSIGNED NOT NULL",
+		"uint32":          "INT(11) UNSIGNED NOT NULL",
+		"uint64":          "BIGINT(20) UNSIGNED NOT NULL",
+		"*uint":           "INT(11) UNSIGNED",
+		"*uint8":          "TINYINT(4) UNSIGNED",
+		"*uint16":         "SMALLINT(6) UNSIGNED",
+		"*uint32":         "INT(11) UNSIGNED",
+		"*uint64":         "BIGINT(20) UNSIGNED",
+		"sql.NullInt64":   "BIGINT(20)",
 		"string":          "VARCHAR(255) NOT NULL",
 		"*string":         "VARCHAR(255)",
-		"[]byte":          "VARBINARY(255)",
+		"[]byte":          "VARBINARY(255) NOT NULL",
 		"sql.NullString":  "VARCHAR(255)",
 		"bool":            "TINYINT(1) NOT NULL",
 		"*bool":           "TINYINT(1)",
@@ -1039,8 +966,8 @@ func TestDiffWithExtraField(t *testing.T) {
 	}
 	expect := []string{
 		fmt.Sprintf("CREATE TABLE `user` (\n" +
-			"  `extra` INT NOT NULL,\n" +
-			"  `another_extra` INT NOT NULL\n" +
+			"  `extra` INT(11) NOT NULL,\n" +
+			"  `another_extra` INT(11) NOT NULL\n" +
 			")"),
 	}
 	if diff := cmp.Diff(actual, expect); diff != "" {
@@ -1075,7 +1002,7 @@ func TestDiffMarker(t *testing.T) {
 			}
 			expect := []string{
 				fmt.Sprintf("CREATE TABLE `user` (\n" +
-					"  `a` INT NOT NULL\n" +
+					"  `a` INT(11) NOT NULL\n" +
 					")"),
 			}
 			if diff := cmp.Diff(actual, expect); diff != "" {
@@ -1127,7 +1054,7 @@ func TestDiffMarker(t *testing.T) {
 		}
 		expect := []string{
 			fmt.Sprintf("CREATE TABLE `user` (\n" +
-				"  `a` INT NOT NULL\n" +
+				"  `a` INT(11) NOT NULL\n" +
 				")"),
 		}
 		if diff := cmp.Diff(actual, expect); diff != "" {
@@ -1174,7 +1101,7 @@ func TestDiffAnnotation(t *testing.T) {
 			}
 			expect := []string{
 				fmt.Sprintf("CREATE TABLE `" + v.tableName + "` (\n" +
-					"  `a` INT NOT NULL\n" +
+					"  `a` INT(11) NOT NULL\n" +
 					")" + v.option),
 			}
 			if diff := cmp.Diff(actual, expect); diff != "" {
@@ -1257,7 +1184,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Name *string `migu:\"type:varchar,size:255,null\"`\n" +
+			"	Name *string `migu:\"type:varchar(255),null\"`\n" +
 			"}\n\n",
 		},
 		{2, []string{
@@ -1267,8 +1194,8 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Name *string `migu:\"type:varchar,size:255,null\"`\n" +
-			"	Age  *int    `migu:\"type:int,null\"`\n" +
+			"	Name *string `migu:\"type:varchar(255),null\"`\n" +
+			"	Age  *int    `migu:\"type:int(11),null\"`\n" +
 			"}\n\n",
 		},
 		{3, []string{
@@ -1281,13 +1208,13 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type Post struct {\n" +
-			"	Title   *string `migu:\"type:varchar,size:255,null\"`\n" +
-			"	Content *string `migu:\"type:varchar,size:255,null\"`\n" +
+			"	Title   *string `migu:\"type:varchar(255),null\"`\n" +
+			"	Content *string `migu:\"type:varchar(255),null\"`\n" +
 			"}\n" +
 			"\n" +
 			"//+migu\n" +
 			"type User struct {\n" +
-			"	Name *string `migu:\"type:varchar,size:255,null\"`\n" +
+			"	Name *string `migu:\"type:varchar(255),null\"`\n" +
 			"}\n\n",
 		},
 		{4, []string{
@@ -1296,7 +1223,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	EncryptedName []byte `migu:\"type:varbinary,size:255,null\"`\n" +
+			"	EncryptedName []byte `migu:\"type:varbinary(255),null\"`\n" +
 			"}\n\n",
 		},
 		{5, []string{
@@ -1305,7 +1232,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	EncryptedName []byte `migu:\"type:binary,size:4,null\"`\n" +
+			"	EncryptedName []byte `migu:\"type:binary(4),null\"`\n" +
 			"}\n\n",
 		},
 		{6, []string{
@@ -1343,7 +1270,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	UUID string `migu:\"type:char,size:36\"`\n" +
+			"	UUID string `migu:\"type:char(36)\"`\n" +
 			"}\n\n",
 		},
 		{10, []string{
@@ -1352,7 +1279,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Balance float64 `migu:\"type:decimal,precision:65,scale:2\"`\n" +
+			"	Balance float64 `migu:\"type:decimal(65,2)\"`\n" +
 			"}\n\n",
 		},
 		{11, []string{
@@ -1370,7 +1297,16 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	UUID string `migu:\"type:varchar,size:36\"` // Maximum length is 36\n" +
+			"	UUID string `migu:\"type:varchar(36)\"` // Maximum length is 36\n" +
+			"}\n\n",
+		},
+		{13, []string{
+			"CREATE TABLE user (\n" +
+				"id BIGINT UNSIGNED NOT NULL\n" +
+				")",
+		}, "//+migu\n" +
+			"type User struct {\n" +
+			"	ID uint64 `migu:\"type:bigint(20) unsigned\"`\n" +
 			"}\n\n",
 		},
 	} {

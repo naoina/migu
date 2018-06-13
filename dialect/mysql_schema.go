@@ -108,11 +108,8 @@ func (schema *mysqlColumnSchema) GoType() string {
 	return "interface{}"
 }
 
-func (schema *mysqlColumnSchema) DataType() string {
-	if schema.dataType == "tinyint" && schema.columnType == "tinyint(1)" {
-		return "tinyint(1)"
-	}
-	return schema.dataType
+func (schema *mysqlColumnSchema) ColumnType() string {
+	return schema.columnType
 }
 
 func (schema *mysqlColumnSchema) IsDatetime() bool {
@@ -136,36 +133,6 @@ func (schema *mysqlColumnSchema) Index() (name string, unique bool, ok bool) {
 
 func (schema *mysqlColumnSchema) Default() (string, bool) {
 	return schema.columnDefault.String, schema.columnDefault.Valid && (schema.columnType != "datetime" || schema.columnDefault.String != "0000-00-00 00:00:00")
-}
-
-func (schema *mysqlColumnSchema) Size() (int64, bool) {
-	if (schema.dataType == "varchar" || schema.dataType == "char") && schema.characterMaximumLength != nil {
-		return int64(*schema.characterMaximumLength), true
-	}
-	if (schema.dataType == "varbinary" || schema.dataType == "binary") && schema.characterOctetLength.Valid {
-		return schema.characterOctetLength.Int64, true
-	}
-	return 0, false
-}
-
-func (schema *mysqlColumnSchema) Precision() (int64, bool) {
-	switch schema.dataType {
-	case "decimal":
-		return schema.numericPrecision.Int64, schema.numericPrecision.Valid
-	case "datetime", "timestamp", "time":
-		return schema.datetimePrecision.Int64, schema.datetimePrecision.Valid && schema.datetimePrecision.Int64 > 0
-	}
-	return 0, false
-}
-
-func (schema *mysqlColumnSchema) Scale() (int64, bool) {
-	switch schema.dataType {
-	case "decimal":
-		return schema.numericScale.Int64, schema.numericScale.Valid && schema.numericScale.Int64 > 0
-	case "double":
-		return schema.numericScale.Int64, schema.numericScale.Valid
-	}
-	return 0, false
 }
 
 func (schema *mysqlColumnSchema) IsNullable() bool {

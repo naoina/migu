@@ -1,6 +1,7 @@
 package migu
 
 import (
+	"bufio"
 	"database/sql"
 	"fmt"
 	"go/ast"
@@ -23,7 +24,17 @@ const (
 	commentPrefix       = "//"
 	marker              = "+migu"
 	annotationSeparator = ':'
-	defaultVarcharSize  = 255
+)
+
+var (
+	nullableTypeMap = map[string]struct{}{
+		"sql.NullString":  struct{}{},
+		"sql.NullBool":    struct{}{},
+		"sql.NullInt64":   struct{}{},
+		"sql.NullFloat64": struct{}{},
+		"mysql.NullTime":  struct{}{},
+		"gorp.NullTime":   struct{}{},
+	}
 )
 
 // Sync synchronizes the schema between Go's struct and the database.
@@ -260,18 +271,13 @@ type field struct {
 	AutoIncrement bool
 	Ignore        bool
 	Default       string
-	Size          uint64
 	Extra         string
 	Nullable      bool
-	Unsigned      bool
-	Precision     int64
-	Scale         int64
 }
 
 func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) {
 	ret := &field{
 		GoType: typeName,
-		Size:   defaultVarcharSize,
 	}
 	if len(f.Names) > 0 && f.Names[0] != nil {
 		ret.Name = f.Names[0].Name
@@ -294,20 +300,21 @@ func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) 
 	if ret.Column == "" {
 		ret.Column = stringutil.ToSnakeCase(ret.Name)
 	}
-	colType, unsigned, null := d.ColumnType(ret.GoType, ret.Size, ret.AutoIncrement)
-	if ret.Type != "" {
+	if !ret.Nullable {
+		if ret.GoType[0] == '*' {
+			ret.Nullable = true
+		} else {
+			_, ok := nullableTypeMap[strings.TrimLeft(ret.GoType, "*")]
+			ret.Nullable = ok
+		}
+	}
+	var colType string
+	if ret.Type == "" {
+		colType = strings.TrimLeft(ret.GoType, "*")
+	} else {
 		colType = ret.Type
 	}
-	if colType == "" {
-		return nil, fmt.Errorf("unsupported Go data type `%s'. You can use `type' struct tag if you use a user-defined type. See https://github.com/naoina/migu#type", ret.GoType)
-	}
-	ret.Unsigned = unsigned
-	if !ret.Nullable {
-		ret.Nullable = null
-	}
-	if ret.Type = d.DataType(colType, ret.Size, ret.Unsigned, ret.Precision, ret.Scale); ret.Type == "" {
-		return nil, fmt.Errorf("unknown data type: `%s'", colType)
-	}
+	ret.Type = d.ColumnType(colType)
 	return ret, nil
 }
 
@@ -526,13 +533,10 @@ const (
 	tagAutoIncrement = "autoincrement"
 	tagIndex         = "index"
 	tagUnique        = "unique"
-	tagSize          = "size"
 	tagColumn        = "column"
 	tagType          = "type"
 	tagNull          = "null"
 	tagExtra         = "extra"
-	tagPrecision     = "precision"
-	tagScale         = "scale"
 	tagIgnore        = "-"
 )
 
@@ -715,7 +719,10 @@ func parseStructTag(d dialect.Dialect, f *field, tag reflect.StructTag) error {
 	if migu == "" {
 		return nil
 	}
-	for _, opt := range strings.Split(migu, ",") {
+	scanner := bufio.NewScanner(strings.NewReader(migu))
+	scanner.Split(tagOptionSplit)
+	for scanner.Scan() {
+		opt := scanner.Text()
 		optval := strings.SplitN(opt, ":", 2)
 		switch optval[0] {
 		case tagDefault:
@@ -752,43 +759,33 @@ func parseStructTag(d dialect.Dialect, f *field, tag reflect.StructTag) error {
 			f.Type = optval[1]
 		case tagNull:
 			f.Nullable = true
-		case tagSize:
-			if len(optval) < 2 {
-				return fmt.Errorf("`size' tag must specify the parameter")
-			}
-			size, err := strconv.ParseUint(optval[1], 10, 64)
-			if err != nil {
-				return err
-			}
-			f.Size = size
 		case tagExtra:
 			if len(optval) < 2 {
 				return fmt.Errorf("`extra` tag must specify the parameter")
 			}
 			f.Extra = optval[1]
-		case tagPrecision:
-			if len(optval) < 2 {
-				return fmt.Errorf("`precision` tag must specify the parameter")
-			}
-			prec, err := strconv.ParseInt(optval[1], 10, 64)
-			if err != nil {
-				return err
-			}
-			f.Precision = prec
-		case tagScale:
-			if len(optval) < 2 {
-				return fmt.Errorf("`scale` tag must specify the parameter")
-			}
-			scale, err := strconv.ParseInt(optval[1], 10, 64)
-			if err != nil {
-				return err
-			}
-			f.Scale = scale
 		default:
 			return fmt.Errorf("unknown option: `%s'", opt)
 		}
 	}
-	return nil
+	return scanner.Err()
+}
+
+func tagOptionSplit(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	var inParenthesis bool
+	for i := 0; i < len(data); i++ {
+		switch data[i] {
+		case ',':
+			if !inParenthesis {
+				return i + 1, data[:i], nil
+			}
+		case '(':
+			inParenthesis = true
+		case ')':
+			inParenthesis = false
+		}
+	}
+	return 0, data, bufio.ErrFinalToken
 }
 
 func fieldAST(schema dialect.ColumnSchema) (*ast.Field, error) {
@@ -799,7 +796,7 @@ func fieldAST(schema dialect.ColumnSchema) (*ast.Field, error) {
 		Type: ast.NewIdent(schema.GoType()),
 	}
 	var tags []string
-	tags = append(tags, fmt.Sprintf("%s:%s", tagType, schema.DataType()))
+	tags = append(tags, fmt.Sprintf("%s:%s", tagType, schema.ColumnType()))
 	if v, ok := schema.Default(); ok {
 		tags = append(tags, tagDefault+":"+v)
 	}
@@ -821,15 +818,6 @@ func fieldAST(schema dialect.ColumnSchema) (*ast.Field, error) {
 		} else {
 			tags = append(tags, fmt.Sprintf("%s:%s", tag, v))
 		}
-	}
-	if v, ok := schema.Size(); ok {
-		tags = append(tags, fmt.Sprintf("%s:%d", tagSize, v))
-	}
-	if v, ok := schema.Precision(); ok {
-		tags = append(tags, fmt.Sprintf("%s:%d", tagPrecision, v))
-	}
-	if v, ok := schema.Scale(); ok {
-		tags = append(tags, fmt.Sprintf("%s:%d", tagScale, v))
 	}
 	if schema.IsNullable() {
 		tags = append(tags, tagNull)
