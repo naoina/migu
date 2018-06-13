@@ -3,12 +3,14 @@ package dialect
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
 type MySQL struct {
 	db       *sql.DB
 	dbName   string
+	version  *mysqlVersion
 	indexMap map[string]map[string]mysqlIndexInfo
 }
 
@@ -20,6 +22,10 @@ func NewMySQL(db *sql.DB) Dialect {
 
 func (d *MySQL) ColumnSchema(tables ...string) ([]ColumnSchema, error) {
 	dbname, err := d.currentDBName()
+	if err != nil {
+		return nil, err
+	}
+	version, err := d.dbVersion()
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +70,9 @@ func (d *MySQL) ColumnSchema(tables ...string) ([]ColumnSchema, error) {
 	defer rows.Close()
 	var schemas []ColumnSchema
 	for rows.Next() {
-		schema := &mysqlColumnSchema{}
+		schema := &mysqlColumnSchema{
+			version: version,
+		}
 		if err := rows.Scan(
 			&schema.tableName,
 			&schema.columnName,
@@ -198,6 +206,35 @@ func (d *MySQL) currentDBName() (string, error) {
 	return d.dbName, err
 }
 
+func (d *MySQL) dbVersion() (*mysqlVersion, error) {
+	if d.version != nil {
+		return d.version, nil
+	}
+	var version string
+	if err := d.db.QueryRow(`SELECT VERSION()`).Scan(&version); err != nil {
+		return nil, err
+	}
+	vs := strings.Split(version, "-")
+	vStr := vs[0]
+	var v mysqlVersion
+	if len(vs) > 1 {
+		v.Name = vs[1]
+	}
+	versions := strings.Split(vStr, ".")
+	var err error
+	if v.Major, err = strconv.Atoi(versions[0]); err != nil {
+		return nil, err
+	}
+	if v.Minor, err = strconv.Atoi(versions[1]); err != nil {
+		return nil, err
+	}
+	if v.Patch, err = strconv.Atoi(versions[2]); err != nil {
+		return nil, err
+	}
+	d.version = &v
+	return d.version, err
+}
+
 func (d *MySQL) getIndexMap() (map[string]map[string]mysqlIndexInfo, error) {
 	if d.indexMap != nil {
 		return d.indexMap, nil
@@ -242,4 +279,11 @@ func (d *MySQL) getIndexMap() (map[string]map[string]mysqlIndexInfo, error) {
 type mysqlIndexInfo struct {
 	NonUnique int64
 	IndexName string
+}
+
+type mysqlVersion struct {
+	Major int
+	Minor int
+	Patch int
+	Name  string
 }

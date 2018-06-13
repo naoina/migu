@@ -25,6 +25,8 @@ type mysqlColumnSchema struct {
 	columnComment          string
 	nonUnique              int64
 	indexName              string
+
+	version *mysqlVersion
 }
 
 func (schema *mysqlColumnSchema) TableName() string {
@@ -132,7 +134,31 @@ func (schema *mysqlColumnSchema) Index() (name string, unique bool, ok bool) {
 }
 
 func (schema *mysqlColumnSchema) Default() (string, bool) {
-	return schema.columnDefault.String, schema.columnDefault.Valid && (schema.columnType != "datetime" || schema.columnDefault.String != "0000-00-00 00:00:00")
+	if !schema.columnDefault.Valid {
+		return "", false
+	}
+	def := schema.columnDefault.String
+	v := schema.version
+	// See https://mariadb.com/kb/en/library/information-schema-columns-table/
+	if v.Name == "MariaDB" && v.Major >= 10 && v.Minor >= 2 && v.Patch >= 7 {
+		// unquote string
+		if len(def) > 0 && def[0] == '\'' {
+			def = def[1:]
+		}
+		if len(def) > 0 && def[len(def)-1] == '\'' {
+			def = def[:len(def)-1]
+		}
+		def = strings.Replace(def, "''", "'", -1) // unescape string
+	}
+	if def == "NULL" {
+		return "", false
+	}
+	if schema.dataType == "datetime" && def == "0000-00-00 00:00:00" {
+		return "", false
+	}
+	// Trim parenthesis from like "on update current_timestamp()".
+	def = strings.TrimSuffix(def, "()")
+	return def, true
 }
 
 func (schema *mysqlColumnSchema) IsNullable() bool {
@@ -140,7 +166,13 @@ func (schema *mysqlColumnSchema) IsNullable() bool {
 }
 
 func (schema *mysqlColumnSchema) Extra() (string, bool) {
-	return strings.ToUpper(schema.extra), schema.extra != "" && !schema.IsAutoIncrement()
+	if schema.extra == "" || schema.IsAutoIncrement() {
+		return "", false
+	}
+	// Trim parenthesis from like "on update current_timestamp()".
+	extra := strings.TrimSuffix(schema.extra, "()")
+	extra = strings.ToUpper(extra)
+	return extra, true
 }
 
 func (schema *mysqlColumnSchema) Comment() (string, bool) {
