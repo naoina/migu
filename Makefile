@@ -1,11 +1,11 @@
 BIN_NAME="$(notdir $(PWD))"
 BUILDFLAGS := -tags netgo -installsuffix netgo -ldflags '-w -s --extldflags "-static"'
-DATADIR := /tmp/migu-test-db
 GO_VERSION := 1.10
 GO_PACKAGE := "$(shell go list)"
-DOCKER_NETWORK := migu-test-net
-DB_HOST := migu-test-db
-MARIADB_VERSION := 10.1.33
+DB_IMAGE := mariadb:10.1.33
+DB_HOST := migu-test-db-$(subst :,-,$(DB_IMAGE))
+DOCKER_NETWORK := migu-test-net-$(subst :,-,$(DB_IMAGE))
+DATADIR := /tmp/$(DB_HOST)
 
 .PHONY: all
 all: deps
@@ -28,8 +28,8 @@ test:
 test-all: test-deps
 	$(MAKE) test
 
-.PHONY: mariadb
-mariadb:
+.PHONY: db
+db:
 	docker network inspect -f '{{.Name}}: {{.Id}}' $(DOCKER_NETWORK) || docker network create $(DOCKER_NETWORK)
 	docker inspect -f='{{.Name}}: {{.Id}}' $(DB_HOST) || \
 		docker run \
@@ -38,10 +38,22 @@ mariadb:
 			-e MYSQL_ALLOW_EMPTY_PASSWORD=1 \
 			-e MYSQL_DATABASE=migu_test \
 			-d --rm --net=$(DOCKER_NETWORK) \
-			mariadb:$(MARIADB_VERSION)
+			$(DB_IMAGE)
 
 .PHONY: test-on-docker
-test-on-docker: mariadb
+define DOCKERFILE
+FROM golang:latest
+ENV GOROOT_FINAL /usr/lib/go
+RUN git clone --depth=1 https://go.googlesource.com/go $$GOROOT_FINAL \
+	&& cd $$GOROOT_FINAL/src \
+	&& ./make.bash
+ENV PATH $$GOROOT_FINAL/bin:$$PATH
+endef
+export DOCKERFILE
+test-on-docker: db
+ifeq ($(GO_VERSION),master)
+	echo "$$DOCKERFILE" | docker build --no-cache -t golang:master -
+endif
 	docker run \
 		-v $(PWD):/go/src/$(GO_PACKAGE) \
 		-w /go/src/$(GO_PACKAGE) \

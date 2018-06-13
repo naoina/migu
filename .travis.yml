@@ -1,11 +1,20 @@
+sudo: required
 language: go
 go:
   - "1.9"
   - "1.10"
-  - "tip"
+  - "master"
+services:
+  - docker
+env:
+  - DB_IMAGE=mariadb:10.1
+  - DB_IMAGE=mariadb:10.2
+  - DB_IMAGE=mariadb:latest
+  - DB_IMAGE=mysql:5.6
+  - DB_IMAGE=mysql:5.7
+  - DB_IMAGE=mysql:latest
 install:
-  - make test-deps
 before_script:
-  - sh -c "mysql -e 'CREATE DATABASE IF NOT EXISTS migu_test;'"
+  - docker --version
 script:
-  - make test
+  - make GO_VERSION=$TRAVIS_GO_VERSION test-on-docker
