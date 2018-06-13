@@ -263,7 +263,6 @@ type field struct {
 	Size          uint64
 	Extra         string
 	Nullable      bool
-	NotNull       bool
 	Unsigned      bool
 	Precision     int64
 	Scale         int64
@@ -303,7 +302,7 @@ func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) 
 		return nil, fmt.Errorf("unsupported Go data type `%s'. You can use `type' struct tag if you use a user-defined type. See https://github.com/naoina/migu#type", ret.GoType)
 	}
 	ret.Unsigned = unsigned
-	if !ret.NotNull {
+	if !ret.Nullable {
 		ret.Nullable = null
 	}
 	if ret.Type = d.DataType(colType, ret.Size, ret.Unsigned, ret.Precision, ret.Scale); ret.Type == "" {
@@ -530,7 +529,7 @@ const (
 	tagSize          = "size"
 	tagColumn        = "column"
 	tagType          = "type"
-	tagNotNull       = "notnull"
+	tagNull          = "null"
 	tagExtra         = "extra"
 	tagPrecision     = "precision"
 	tagScale         = "scale"
@@ -751,8 +750,8 @@ func parseStructTag(d dialect.Dialect, f *field, tag reflect.StructTag) error {
 				return fmt.Errorf("`type` tag must specify the parameter")
 			}
 			f.Type = optval[1]
-		case tagNotNull:
-			f.NotNull = true
+		case tagNull:
+			f.Nullable = true
 		case tagSize:
 			if len(optval) < 2 {
 				return fmt.Errorf("`size' tag must specify the parameter")
@@ -832,8 +831,8 @@ func fieldAST(schema dialect.ColumnSchema) (*ast.Field, error) {
 	if v, ok := schema.Scale(); ok {
 		tags = append(tags, fmt.Sprintf("%s:%d", tagScale, v))
 	}
-	if !schema.IsNullable() {
-		tags = append(tags, tagNotNull)
+	if schema.IsNullable() {
+		tags = append(tags, tagNull)
 	}
 	if v, ok := schema.Extra(); ok {
 		tags = append(tags, fmt.Sprintf("%s:%s", tagExtra, v))

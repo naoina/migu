@@ -736,7 +736,7 @@ func TestDiff(t *testing.T) {
 		}
 	})
 
-	t.Run("notnull tag", func(t *testing.T) {
+	t.Run("null tag", func(t *testing.T) {
 		before(t)
 		for _, v := range []struct {
 			i       int
@@ -744,22 +744,22 @@ func TestDiff(t *testing.T) {
 			expect  []string
 		}{
 			{1, []string{
-				"Fee float64",
+				"Fee *float64",
 			}, []string{
 				"CREATE TABLE `user` (\n" +
-					"  `fee` DOUBLE NOT NULL\n" +
+					"  `fee` DOUBLE\n" +
 					")",
 			}},
 			{2, []string{
-				"Fee float64 `migu:\"notnull\"`",
+				"Fee *float64 `migu:\"null\"`",
 			}, []string(nil)},
 			{3, []string{
-				"Fee *float64 `migu:\"notnull\"`",
+				"Fee float64 `migu:\"null\"`",
 			}, []string(nil)},
 			{4, []string{
-				"Fee *float64",
+				"Fee float64",
 			}, []string{
-				"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE",
+				"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL",
 			}},
 		} {
 			v := v
@@ -1257,7 +1257,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Name *string `migu:\"type:varchar,size:255\"`\n" +
+			"	Name *string `migu:\"type:varchar,size:255,null\"`\n" +
 			"}\n\n",
 		},
 		{2, []string{
@@ -1267,8 +1267,8 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Name *string `migu:\"type:varchar,size:255\"`\n" +
-			"	Age  *int    `migu:\"type:int\"`\n" +
+			"	Name *string `migu:\"type:varchar,size:255,null\"`\n" +
+			"	Age  *int    `migu:\"type:int,null\"`\n" +
 			"}\n\n",
 		},
 		{3, []string{
@@ -1281,13 +1281,13 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type Post struct {\n" +
-			"	Title   *string `migu:\"type:varchar,size:255\"`\n" +
-			"	Content *string `migu:\"type:varchar,size:255\"`\n" +
+			"	Title   *string `migu:\"type:varchar,size:255,null\"`\n" +
+			"	Content *string `migu:\"type:varchar,size:255,null\"`\n" +
 			"}\n" +
 			"\n" +
 			"//+migu\n" +
 			"type User struct {\n" +
-			"	Name *string `migu:\"type:varchar,size:255\"`\n" +
+			"	Name *string `migu:\"type:varchar,size:255,null\"`\n" +
 			"}\n\n",
 		},
 		{4, []string{
@@ -1296,7 +1296,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	EncryptedName []byte `migu:\"type:varbinary,size:255\"`\n" +
+			"	EncryptedName []byte `migu:\"type:varbinary,size:255,null\"`\n" +
 			"}\n\n",
 		},
 		{5, []string{
@@ -1305,7 +1305,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	EncryptedName []byte `migu:\"type:binary,size:4\"`\n" +
+			"	EncryptedName []byte `migu:\"type:binary,size:4,null\"`\n" +
 			"}\n\n",
 		},
 		{6, []string{
@@ -1314,7 +1314,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Active bool `migu:\"type:tinyint(1),notnull\"`\n" +
+			"	Active bool `migu:\"type:tinyint(1)\"`\n" +
 			"}\n\n",
 		},
 		{7, []string{
@@ -1323,7 +1323,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Active *bool `migu:\"type:tinyint(1)\"`\n" +
+			"	Active *bool `migu:\"type:tinyint(1),null\"`\n" +
 			"}\n\n",
 		},
 		{8, []string{
@@ -1334,7 +1334,7 @@ func TestFprint(t *testing.T) {
 			"\n" +
 			"//+migu\n" +
 			"type User struct {\n" +
-			"	CreatedAt time.Time `migu:\"type:datetime,notnull\"`\n" +
+			"	CreatedAt time.Time `migu:\"type:datetime\"`\n" +
 			"}\n\n",
 		},
 		{9, []string{
@@ -1343,7 +1343,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	UUID string `migu:\"type:char,size:36,notnull\"`\n" +
+			"	UUID string `migu:\"type:char,size:36\"`\n" +
 			"}\n\n",
 		},
 		{10, []string{
@@ -1352,7 +1352,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Balance float64 `migu:\"type:decimal,precision:65,scale:2,notnull\"`\n" +
+			"	Balance float64 `migu:\"type:decimal,precision:65,scale:2\"`\n" +
 			"}\n\n",
 		},
 		{11, []string{
@@ -1361,7 +1361,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	Brightness float64 `migu:\"type:float,default:0.1,notnull\"`\n" +
+			"	Brightness float64 `migu:\"type:float,default:0.1\"`\n" +
 			"}\n\n",
 		},
 		{12, []string{
@@ -1370,7 +1370,7 @@ func TestFprint(t *testing.T) {
 				")",
 		}, "//+migu\n" +
 			"type User struct {\n" +
-			"	UUID string `migu:\"type:varchar,size:36,notnull\"` // Maximum length is 36\n" +
+			"	UUID string `migu:\"type:varchar,size:36\"` // Maximum length is 36\n" +
 			"}\n\n",
 		},
 	} {

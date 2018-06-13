@@ -167,12 +167,12 @@ To specify the type of column, please use `type` struct tag.
 Balance float64 `migu:"type:decimal"`
 ```
 
-#### NOTNULL
+#### NULL
 
-By default, A user-defined types will be nullable whether or not a pointer type. If you want to specify `NOT NULL` to a field of a user-defined type, you can use `notnull` struct tag like below.
+By default, A user-defined type will be `NOT NULL`. If you don't want to specify `NOT NULL`, you can use `null` struct tag like below.
 
 ```go
-Amount CustomType `migu:"type:int,notnull"`
+Amount CustomType `migu:"type:int,null"`
 ```
 
 #### PRECISION & SCALE
