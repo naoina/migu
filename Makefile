@@ -9,7 +9,7 @@ DATADIR := /tmp/$(DB_HOST)
 
 .PHONY: all
 all: deps
-	cd cmd/migu && go build -o $(BIN_NAME) $(BUILDFLAGS)
+	cd cmd/migu && CGO_ENABLED=0 go build -o $(BIN_NAME) $(BUILDFLAGS)
 
 .PHONY: deps
 deps:
