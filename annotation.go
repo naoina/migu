@@ -10,8 +10,9 @@ import (
 )
 
 type annotation struct {
-	Table  string
-	Option string
+	Table     string
+	Option    string
+	Separator string
 }
 
 func parseAnnotation(g *ast.CommentGroup) (*annotation, error) {
@@ -47,6 +48,12 @@ func parseAnnotation(g *ast.CommentGroup) (*annotation, error) {
 					return nil, fmt.Errorf("migu: BUG: %v", err)
 				}
 				a.Option = s
+			case "separator":
+				s, err := parseString(v)
+				if err != nil {
+					return nil, fmt.Errorf("migu: BUG: %v", err)
+				}
+				a.Separator = s
 			default:
 				return nil, fmt.Errorf("migu: unsupported annotation: %v", k)
 			}
