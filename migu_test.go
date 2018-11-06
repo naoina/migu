@@ -21,8 +21,14 @@ func init() {
 	if dbHost == "" {
 		dbHost = "localhost"
 	}
+	dbUser := os.Getenv("DB_USER")
+	if dbUser == "" {
+		dbUser = "root"
+	}
+	dbPass := os.Getenv("DB_PASS")
+
 	var err error
-	db, err = sql.Open("mysql", fmt.Sprintf("root@tcp(%s)/migu_test", dbHost))
+	db, err = sql.Open("mysql", fmt.Sprintf("%s%s@tcp(%s)/migu_test", dbUser, dbPass, dbHost))
 	if err != nil {
 		panic(err)
 	}
@@ -578,6 +584,66 @@ func TestDiff(t *testing.T) {
 			if !t.Run(fmt.Sprintf("%v", v.i), func(t *testing.T) {
 				src := "package migu_test\n" +
 					"//+migu\n" +
+					"type User struct {\n" +
+					strings.Join(v.columns, "\n") + "\n" +
+					"}"
+				results, err := migu.Diff(db, "", src)
+				if err != nil {
+					t.Fatal(err)
+				}
+				actual := results
+				expect := v.expect
+				if diff := cmp.Diff(actual, expect); diff != "" {
+					t.Fatalf("(-got +want)\n%v", diff)
+				}
+				for _, q := range results {
+					if _, err := db.Exec(q); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}) {
+				return
+			}
+		}
+	})
+
+	t.Run("type tag of special separator", func(t *testing.T) {
+		before(t)
+		for _, v := range []struct {
+			i       int
+			columns []string
+			expect  []string
+		}{
+			{1, []string{
+				"Fee *float64 `migu:\"type:tinyint;null\"`",
+			}, []string{
+				"CREATE TABLE `user` (\n" +
+					"  `fee` TINYINT\n" +
+					")",
+			}},
+			{2, []string{
+				"Fee *float64 `migu:\"type:int;null\"`",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `fee` `fee` INT",
+			}},
+			{3, []string{
+				"Fee float64",
+				"Point int `migu:\"type:smallint\"`",
+			}, []string{
+				"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL, ADD `point` SMALLINT NOT NULL",
+			}},
+			{4, []string{
+				"Fee float64",
+				"Point int     `migu:\"type:smallint\"`",
+				"BloodType string `migu:\"type:enum('A','B','O','AB');null\"`",
+			}, []string{
+				"ALTER TABLE `user` ADD `blood_type` ENUM('A','B','O','AB')",
+			}},
+		} {
+			v := v
+			if !t.Run(fmt.Sprintf("%v", v.i), func(t *testing.T) {
+				src := "package migu_test\n" +
+					"//+migu separator:\";\"\n" +
 					"type User struct {\n" +
 					strings.Join(v.columns, "\n") + "\n" +
 					"}"
@@ -1184,6 +1250,39 @@ func TestDiffAnnotation(t *testing.T) {
 	}
 
 	for _, v := range []struct {
+		i int
+		comment string
+		separator string
+		option string
+	}{
+		{1, `//+migu table:"user"`, ",", ""},
+		{2, `//+migu separator:";"`, ";", ""},
+		{3, `//+migu table:"user" separator:";"`, ";", ""},
+		{4, `//+migu table:"user" option:ENGINE=InnoDB separator:";"`, ";", " ENGINE=InnoDB"},
+	} {
+		v := v
+		t.Run(fmt.Sprintf("invalid annotation/%v", v.i), func(t *testing.T) {
+			src := fmt.Sprintf("package migu_test\n" +
+				v.comment + "\n" +
+				"type User struct {\n" +
+				"	A string `migu:\"type:varchar"+v.separator+"size:64\"`" +
+				"}")
+			actual, err := migu.Diff(db, "", src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expect := []string{
+				fmt.Sprintf("CREATE TABLE `user` (\n" +
+					"  `a` VARCHAR(64) NOT NULL\n" +
+					")" + v.option),
+			}
+			if diff := cmp.Diff(actual, expect); diff != "" {
+				t.Errorf("(-got +want)\n%v", diff)
+			}
+		})
+	}
+
+	for _, v := range []struct {
 		i       int
 		comment string
 		expect  string
@@ -1371,6 +1470,24 @@ func TestFprint(t *testing.T) {
 		}, "//+migu\n" +
 			"type User struct {\n" +
 			"	UUID string `migu:\"type:varchar,size:36\"` // Maximum length is 36\n" +
+			"}\n\n",
+		},
+		{13, []string{
+			"CREATE TABLE user (\n" +
+				"  blood_type ENUM('A','B','O','AB')\n" +
+				")",
+		}, "//+migu separator:\";\"\n" +
+			"type User struct {\n" +
+			"	BloodType *string `migu:\"type:enum('A','B','O','AB');null\"`\n" +
+			"}\n\n",
+		},
+		{14, []string{
+			"CREATE TABLE user (\n" +
+				"  size SET('S','M','L') NOT NULL\n" +
+				")",
+		}, "//+migu separator:\";\"\n" +
+			"type User struct {\n" +
+			"	Size string `migu:\"type:set('S','M','L')\"`\n" +
 			"}\n\n",
 		},
 	} {
