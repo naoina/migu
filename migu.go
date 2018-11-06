@@ -20,10 +20,12 @@ import (
 )
 
 const (
-	commentPrefix       = "//"
-	marker              = "+migu"
-	annotationSeparator = ':'
-	defaultVarcharSize  = 255
+	commentPrefix              = "//"
+	marker                     = "+migu"
+	annotationSeparator        = ':'
+	defaultVarcharSize         = 255
+	defaultDefinitionSeparator = ","
+	enumDefinitionSeparator    = ";"
 )
 
 // Sync synchronizes the schema between Go's struct and the database.
@@ -80,12 +82,16 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 	d := dialect.NewMySQL(db)
 	structMap := map[string]*table{}
 	for name, structAST := range structASTMap {
+		separator := defaultDefinitionSeparator
+		if structAST.Annotation.Separator != "" {
+			separator = structAST.Annotation.Separator
+		}
 		for _, fld := range structAST.StructType.Fields.List {
 			typeName, err := detectTypeName(fld)
 			if err != nil {
 				return nil, err
 			}
-			f, err := newField(d, typeName, fld)
+			f, err := newField(d, typeName, fld, separator)
 			if err != nil {
 				return nil, err
 			}
@@ -119,12 +125,16 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 		tableName := d.Quote(name)
 		var oldFields []*field
 		if columns, ok := tableMap[name]; ok {
+			separator := defaultDefinitionSeparator
+			if hasEnumColumn(columns) {
+				separator = enumDefinitionSeparator
+			}
 			for _, c := range columns {
-				oldFieldAST, err := fieldAST(c)
+				oldFieldAST, err := fieldAST(c, separator)
 				if err != nil {
 					return nil, err
 				}
-				f, err := newField(d, fmt.Sprint(oldFieldAST.Type), oldFieldAST)
+				f, err := newField(d, fmt.Sprint(oldFieldAST.Type), oldFieldAST, separator)
 				if err != nil {
 					return nil, err
 				}
@@ -268,7 +278,7 @@ type field struct {
 	Scale         int64
 }
 
-func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) {
+func newField(d dialect.Dialect, typeName string, f *ast.Field, separator string) (*field, error) {
 	ret := &field{
 		GoType: typeName,
 		Size:   defaultVarcharSize,
@@ -284,7 +294,7 @@ func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) 
 		if err != nil {
 			return nil, err
 		}
-		if err := parseStructTag(d, ret, reflect.StructTag(s)); err != nil {
+		if err := parseStructTag(d, ret, reflect.StructTag(s), separator); err != nil {
 			return nil, err
 		}
 	}
@@ -512,12 +522,24 @@ func Fprint(output io.Writer, db *sql.DB) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(output, commentPrefix+marker)
+		a, err := makeAnnotation(d, name, tableMap[name])
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(output, a)
 		if err := fprintln(output, s); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func makeAnnotation(d dialect.Dialect, name string, schemas []dialect.ColumnSchema) (string, error){
+	ann := commentPrefix+marker
+	if hasEnumColumn(schemas) {
+		ann += " separator:\"" +enumDefinitionSeparator+"\""
+	}
+	return ann, nil
 }
 
 const (
@@ -688,8 +710,12 @@ func importAST(pkg string) ast.Decl {
 
 func makeStructAST(d dialect.Dialect, name string, schemas []dialect.ColumnSchema) (ast.Decl, error) {
 	var fields []*ast.Field
+	separator := defaultDefinitionSeparator
+	if hasEnumColumn(schemas) {
+		separator = enumDefinitionSeparator
+	}
 	for _, schema := range schemas {
-		f, err := fieldAST(schema)
+		f, err := fieldAST(schema, separator)
 		if err != nil {
 			return nil, err
 		}
@@ -710,12 +736,21 @@ func makeStructAST(d dialect.Dialect, name string, schemas []dialect.ColumnSchem
 	}, nil
 }
 
-func parseStructTag(d dialect.Dialect, f *field, tag reflect.StructTag) error {
+func hasEnumColumn(schemas []dialect.ColumnSchema) bool {
+	for _, schema := range schemas {
+		if schema.IsEnumerated() {
+			return true
+		}
+	}
+	return false
+}
+
+func parseStructTag(d dialect.Dialect, f *field, tag reflect.StructTag, separator string) error {
 	migu := tag.Get("migu")
 	if migu == "" {
 		return nil
 	}
-	for _, opt := range strings.Split(migu, ",") {
+	for _, opt := range strings.Split(migu, separator) {
 		optval := strings.SplitN(opt, ":", 2)
 		switch optval[0] {
 		case tagDefault:
@@ -791,7 +826,7 @@ func parseStructTag(d dialect.Dialect, f *field, tag reflect.StructTag) error {
 	return nil
 }
 
-func fieldAST(schema dialect.ColumnSchema) (*ast.Field, error) {
+func fieldAST(schema dialect.ColumnSchema, separator string) (*ast.Field, error) {
 	field := &ast.Field{
 		Names: []*ast.Ident{
 			ast.NewIdent(stringutil.ToUpperCamelCase(schema.ColumnName())),
@@ -840,7 +875,7 @@ func fieldAST(schema dialect.ColumnSchema) (*ast.Field, error) {
 	if len(tags) > 0 {
 		field.Tag = &ast.BasicLit{
 			Kind:     token.STRING,
-			Value:    fmt.Sprintf("`migu:\"%s\"`", strings.Join(tags, ",")),
+			Value:    fmt.Sprintf("`migu:\"%s\"`", strings.Join(tags, separator)),
 			ValuePos: 1,
 		}
 	}

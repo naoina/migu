@@ -104,13 +104,22 @@ func (schema *mysqlColumnSchema) GoType() string {
 			return "*float64"
 		}
 		return "float64"
+	case "enum", "set":
+		if schema.IsNullable() {
+			return "*string"
+		}
+		return "string"
 	}
+
 	return "interface{}"
 }
 
 func (schema *mysqlColumnSchema) DataType() string {
 	if schema.dataType == "tinyint" && schema.columnType == "tinyint(1)" {
 		return "tinyint(1)"
+	}
+	if schema.dataType == "enum" || schema.dataType == "set" {
+		return schema.columnType
 	}
 	return schema.dataType
 }
@@ -182,4 +191,8 @@ func (schema *mysqlColumnSchema) Comment() (string, bool) {
 
 func (schema *mysqlColumnSchema) isUnsigned() bool {
 	return strings.Contains(schema.columnType, "unsigned")
+}
+
+func (schema *mysqlColumnSchema) IsEnumerated() bool {
+	return schema.dataType == "enum" || schema.dataType == "set"
 }

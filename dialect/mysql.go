@@ -3,6 +3,7 @@ package dialect
 import (
 	"database/sql"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -144,6 +145,7 @@ func (d *MySQL) ColumnType(name string, size uint64, autoIncrement bool) (typ st
 }
 
 func (d *MySQL) DataType(name string, size uint64, unsigned bool, prec, scale int64) string {
+	original := name
 	switch name = strings.ToUpper(name); name {
 	case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT":
 		if unsigned {
@@ -187,10 +189,13 @@ func (d *MySQL) DataType(name string, size uint64, unsigned bool, prec, scale in
 		return name
 	case "BIT", "BOOL", "BOOLEAN", "TINYINT(1)", "DATE", "TINYBLOB", "TINYTEXT", "MEDIUMBLOB", "MEDIUMTEXT", "LONGBLOB", "LONGTEXT":
 		return name
-	case "ENUM":
-		return name
-	case "SET":
-		return name
+	default:
+		switch {
+		// ENUM SET
+		case regexp.MustCompile(`(?i)^(enum|set)`).MatchString(original):
+			parts := regexp.MustCompile(`([^(]+)(\(?.*\)?)`).FindStringSubmatch(original)
+			return fmt.Sprintf("%s%s", strings.ToUpper(parts[1]), parts[2])
+		}
 	}
 	return ""
 }

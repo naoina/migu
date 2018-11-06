@@ -16,4 +16,5 @@ type ColumnSchema interface {
 	IsNullable() bool
 	Extra() (string, bool)
 	Comment() (string, bool)
+	IsEnumerated() bool
 }
