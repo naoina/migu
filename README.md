@@ -360,6 +360,21 @@ CREATE TABLE `user` (
 --------dry-run done 0.000s--------
 ```
 
+### Definition separator
+
+If you want to specify a column type such as `ENUM` , `SET` (only MySQL) types, use `separator` annotation tag.
+
+Then you can use type of emun definition with comma in struct. (such as `enum('A','B','O','AB','')`)
+
+```
+package model
+
+//+migu separator:";"
+type User struct {
+    BloodType *string `migu:"column:blood;type:enum('A','B','O','AB')"`
+}
+```
+
 ## Supported database
 
 * MariaDB/MySQL
