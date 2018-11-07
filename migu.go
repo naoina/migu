@@ -1,6 +1,7 @@
 package migu
 
 import (
+	"bufio"
 	"database/sql"
 	"fmt"
 	"go/ast"
@@ -710,12 +711,62 @@ func makeStructAST(d dialect.Dialect, name string, schemas []dialect.ColumnSchem
 	}, nil
 }
 
+func nextStructTag(bs []byte) string {
+	s := string(bs)
+	for _, tag := range []string{
+		tagDefault,
+		tagPrimaryKey,
+		tagAutoIncrement,
+		tagIndex,
+		tagUnique,
+		tagSize,
+		tagColumn,
+		tagType,
+		tagNull,
+		tagExtra,
+		tagPrecision,
+		tagScale,
+		tagIgnore,
+	} {
+		if strings.HasSuffix(s, ","+tag) {
+			return ","+tag;
+		}
+	}
+	return ""
+}
+
+func splitStructTags(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF {
+		return 0, nil, nil
+	}
+	var buf []byte
+	for ; advance < len(data); advance++ {
+		buf = append(buf, data[advance])
+		if n := nextStructTag(buf); n != "" {
+			advance = advance - len(n) + 1
+			break
+		}
+	}
+	token = data[:advance]
+	if len(token) == 0 {
+		return advance + 1, token, nil
+	}
+	if len(data[advance:]) > 1 {
+		return advance + 1, token, nil
+	} else {
+		return advance, token, nil
+	}
+}
+
 func parseStructTag(d dialect.Dialect, f *field, tag reflect.StructTag) error {
 	migu := tag.Get("migu")
 	if migu == "" {
 		return nil
 	}
-	for _, opt := range strings.Split(migu, ",") {
+	scanner := bufio.NewScanner(strings.NewReader(migu))
+	scanner.Split(splitStructTags)
+	for scanner.Scan() {
+		opt := scanner.Text()
 		optval := strings.SplitN(opt, ":", 2)
 		switch optval[0] {
 		case tagDefault:
