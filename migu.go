@@ -27,13 +27,14 @@ const (
 )
 
 var (
+	void            = struct{}{}
 	nullableTypeMap = map[string]struct{}{
-		"sql.NullString":  struct{}{},
-		"sql.NullBool":    struct{}{},
-		"sql.NullInt64":   struct{}{},
-		"sql.NullFloat64": struct{}{},
-		"mysql.NullTime":  struct{}{},
-		"gorp.NullTime":   struct{}{},
+		"sql.NullString":  void,
+		"sql.NullBool":    void,
+		"sql.NullInt64":   void,
+		"sql.NullFloat64": void,
+		"mysql.NullTime":  void,
+		"gorp.NullTime":   void,
 	}
 )
 
