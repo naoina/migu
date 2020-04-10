@@ -1,12 +1,12 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/naoina/migu"
+	"github.com/naoina/migu/dialect"
 )
 
 var (
@@ -56,23 +56,24 @@ func (s *sync) Execute(args []string) error {
 	if !s.DryRun {
 		dryRunMarker = ""
 	}
-	return s.run(db, file)
+	di := dialect.NewMySQL(db)
+	return s.run(di, file)
 }
 
-func (s *sync) run(db *sql.DB, file string) error {
+func (s *sync) run(d dialect.Dialect, file string) error {
 	var src interface{}
 	switch file {
 	case "", "-":
 		file = ""
 		src = os.Stdin
 	}
-	sqls, err := migu.Diff(db, file, src)
+	sqls, err := migu.Diff(d, file, src)
 	if err != nil {
 		return err
 	}
-	var tx *sql.Tx
+	var tx dialect.Transactioner
 	if !s.DryRun {
-		if tx, err = db.Begin(); err != nil {
+		if tx, err = d.Begin(); err != nil {
 			return err
 		}
 	}
@@ -81,7 +82,7 @@ func (s *sync) run(db *sql.DB, file string) error {
 		s.printf("%s\n", sql)
 		start := time.Now()
 		if !s.DryRun {
-			if _, err := tx.Exec(sql); err != nil {
+			if err := tx.Exec(sql); err != nil {
 				tx.Rollback()
 				return err
 			}

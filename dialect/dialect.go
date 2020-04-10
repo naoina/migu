@@ -6,4 +6,12 @@ type Dialect interface {
 	Quote(s string) string
 	QuoteString(s string) string
 	AutoIncrement() string
+
+	Begin() (Transactioner, error)
+}
+
+type Transactioner interface {
+	Exec(sql string, args ...interface{}) error
+	Commit() error
+	Rollback() error
 }

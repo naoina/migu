@@ -6,6 +6,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/naoina/migu"
+	"github.com/naoina/migu/dialect"
 )
 
 func main() {
@@ -14,7 +15,8 @@ func main() {
 		panic(err)
 	}
 	defer db.Close()
-	migrations, err := migu.Diff(db, "schema.go", nil)
+	d := dialect.NewMySQL(db)
+	migrations, err := migu.Diff(d, "schema.go", nil)
 	if err != nil {
 		panic(err)
 	}

@@ -2,7 +2,6 @@ package migu
 
 import (
 	"bufio"
-	"database/sql"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -49,17 +48,17 @@ var (
 // All query for synchronization will be performed within the transaction if
 // storage engine supports the transaction. (e.g. MySQL's MyISAM engine does
 // NOT support the transaction)
-func Sync(db *sql.DB, filename string, src interface{}) error {
-	sqls, err := Diff(db, filename, src)
+func Sync(d dialect.Dialect, filename string, src interface{}) error {
+	sqls, err := Diff(d, filename, src)
 	if err != nil {
 		return err
 	}
-	tx, err := db.Begin()
+	tx, err := d.Begin()
 	if err != nil {
 		return err
 	}
 	for _, sql := range sqls {
-		if _, err := tx.Exec(sql); err != nil {
+		if err := tx.Exec(sql); err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -68,7 +67,7 @@ func Sync(db *sql.DB, filename string, src interface{}) error {
 }
 
 // Diff returns SQLs for schema synchronous between database and Go's struct.
-func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
+func Diff(d dialect.Dialect, filename string, src interface{}) ([]string, error) {
 	var filenames []string
 	structASTMap := make(map[string]*structAST)
 	if src == nil {
@@ -89,7 +88,6 @@ func Diff(db *sql.DB, filename string, src interface{}) ([]string, error) {
 			structASTMap[k] = v
 		}
 	}
-	d := dialect.NewMySQL(db)
 	structMap := map[string]*table{}
 	for name, structAST := range structASTMap {
 		for _, fld := range structAST.StructType.Fields.List {
@@ -499,8 +497,7 @@ func makeAlterTableFields(oldFields, newFields []*field) (fields []modifiedField
 }
 
 // Fprint generates Go's structs from database schema and writes to output.
-func Fprint(output io.Writer, db *sql.DB) error {
-	d := dialect.NewMySQL(db)
+func Fprint(output io.Writer, d dialect.Dialect) error {
 	tableMap, err := getTableMap(d)
 	if err != nil {
 		return err

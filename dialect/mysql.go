@@ -8,10 +8,9 @@ import (
 )
 
 type MySQL struct {
-	db       *sql.DB
-	dbName   string
-	version  *mysqlVersion
-	indexMap map[string]map[string]mysqlIndexInfo
+	db      *sql.DB
+	dbName  string
+	version *mysqlVersion
 }
 
 func NewMySQL(db *sql.DB) Dialect {
@@ -126,6 +125,16 @@ func (d *MySQL) AutoIncrement() string {
 	return "AUTO_INCREMENT"
 }
 
+func (d *MySQL) Begin() (Transactioner, error) {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	return &mysqlTransaction{
+		tx: tx,
+	}, nil
+}
+
 func (d *MySQL) columnType(name string) (typ string, unsigned bool) {
 	switch name {
 	case "string":
@@ -236,9 +245,6 @@ func (d *MySQL) dbVersion() (*mysqlVersion, error) {
 }
 
 func (d *MySQL) getIndexMap() (map[string]map[string]mysqlIndexInfo, error) {
-	if d.indexMap != nil {
-		return d.indexMap, nil
-	}
 	dbname, err := d.currentDBName()
 	if err != nil {
 		return nil, err
@@ -272,7 +278,6 @@ func (d *MySQL) getIndexMap() (map[string]map[string]mysqlIndexInfo, error) {
 		}
 		indexMap[tableName][columnName] = index
 	}
-	d.indexMap = indexMap
 	return indexMap, rows.Err()
 }
 
@@ -286,4 +291,21 @@ type mysqlVersion struct {
 	Minor int
 	Patch int
 	Name  string
+}
+
+type mysqlTransaction struct {
+	tx *sql.Tx
+}
+
+func (m *mysqlTransaction) Exec(sql string, args ...interface{}) error {
+	_, err := m.tx.Exec(sql, args...)
+	return err
+}
+
+func (m *mysqlTransaction) Commit() error {
+	return m.tx.Commit()
+}
+
+func (m *mysqlTransaction) Rollback() error {
+	return m.tx.Rollback()
 }

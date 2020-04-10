@@ -1,11 +1,11 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"os"
 
 	"github.com/naoina/migu"
+	"github.com/naoina/migu/dialect"
 )
 
 type dump struct {
@@ -43,10 +43,11 @@ func (d *dump) Execute(args []string) error {
 		return err
 	}
 	defer db.Close()
-	return d.run(db, filename)
+	di := dialect.NewMySQL(db)
+	return d.run(di, filename)
 }
 
-func (d *dump) run(db *sql.DB, filename string) error {
+func (d *dump) run(di dialect.Dialect, filename string) error {
 	out := os.Stdout
 	if filename != "" {
 		file, err := os.Create(filename)
@@ -56,5 +57,5 @@ func (d *dump) run(db *sql.DB, filename string) error {
 		defer file.Close()
 		out = file
 	}
-	return migu.Fprint(out, db)
+	return migu.Fprint(out, di)
 }
