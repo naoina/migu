@@ -44,7 +44,6 @@ type GeneralOption struct {
 
 func (o *GeneralOption) Usage() string {
 	return "" +
-		"  -u, --user=NAME        User for login to database if not current user\n" +
 		"  -h, --host=HOST        Connect to host of database\n" +
 		"  -u, --user=NAME        User for login to database if not current user\n" +
 		"  -p, --password[=PASS]  Password to use when connecting to server.\n" +
