@@ -13,19 +13,14 @@ all: deps
 
 .PHONY: deps
 deps:
-	go get -v -u github.com/go-sql-driver/mysql
-	go get -v ./...
-
-.PHONY: test-deps
-test-deps: deps
-	go get -v -t ./...
+	go mod download
 
 .PHONY: test
 test:
 	go test ./...
 
 .PHONY: test-all
-test-all: test-deps
+test-all: deps
 	$(MAKE) test
 
 .PHONY: db
