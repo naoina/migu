@@ -6,39 +6,38 @@ import (
 
 	"github.com/naoina/migu"
 	"github.com/naoina/migu/dialect"
+	"github.com/spf13/cobra"
 )
 
-type dump struct {
-	GeneralOption
+func init() {
+	dump := &dump{}
+	dumpCmd := &cobra.Command{
+		Use:   "dump [OPTIONS] DATABASE [FILE]",
+		Short: "dump the database schema as Go code",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return dump.Execute(args)
+		},
+	}
+	dumpCmd.SetUsageTemplate(usageTemplate + "\nWith FILE, output to FILE.\n")
+	rootCmd.AddCommand(dumpCmd)
 }
 
-func (d *dump) Usage() string {
-	return fmt.Sprintf(`Usage: %s dump [OPTIONS] DATABASE [FILE]
-
-Options:
-%s
-With FILE, output to FILE.
-`, progName, d.GeneralOption.Usage())
-}
+type dump struct{}
 
 func (d *dump) Execute(args []string) error {
 	var dbname string
 	var filename string
 	switch len(args) {
 	case 0:
-		return &usageError{
-			err: fmt.Errorf("too few arguments"),
-		}
+		return fmt.Errorf("too few arguments")
 	case 1:
 		dbname = args[0]
 	case 2:
 		dbname, filename = args[0], args[1]
 	default:
-		return &usageError{
-			err: fmt.Errorf("too many arguments"),
-		}
+		return fmt.Errorf("too many arguments")
 	}
-	db, err := database(dbname, d.GeneralOption)
+	db, err := database(dbname)
 	if err != nil {
 		return err
 	}

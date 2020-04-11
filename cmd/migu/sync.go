@@ -7,28 +7,31 @@ import (
 
 	"github.com/naoina/migu"
 	"github.com/naoina/migu/dialect"
+	"github.com/spf13/cobra"
 )
 
 var (
 	dryRunMarker = "dry-run "
 )
 
-type sync struct {
-	GeneralOption
-
-	DryRun bool `long:"dry-run"`
-	Quiet  bool `short:"q" long:"quiet"`
+func init() {
+	sync := &sync{}
+	syncCmd := &cobra.Command{
+		Use:   "sync [OPTIONS] DATABASE [FILE|DIRECTORY]",
+		Short: "synchronize the database schema",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return sync.Execute(args)
+		},
+	}
+	syncCmd.Flags().BoolVar(&sync.DryRun, "dry-run", false, "")
+	syncCmd.Flags().BoolVarP(&sync.Quiet, "quiet", "q", false, "")
+	syncCmd.SetUsageTemplate(usageTemplate + "\nWith no FILE, or when FILE is -, read standard input.\n")
+	rootCmd.AddCommand(syncCmd)
 }
 
-func (s *sync) Usage() string {
-	return fmt.Sprintf(`Usage: %s sync [OPTIONS] DATABASE [FILE|DIRECTORY]
-
-Options:
-      --dry-run          Print the results with no changes
-  -q, --quiet            Suppress non-error messages
-%s
-With no FILE, or when FILE is -, read standard input.
-`, progName, s.GeneralOption.Usage())
+type sync struct {
+	DryRun bool
+	Quiet  bool
 }
 
 func (s *sync) Execute(args []string) error {
@@ -36,19 +39,15 @@ func (s *sync) Execute(args []string) error {
 	var file string
 	switch len(args) {
 	case 0:
-		return &usageError{
-			err: fmt.Errorf("too few arguments"),
-		}
+		return fmt.Errorf("too few arguments")
 	case 1:
 		dbname = args[0]
 	case 2:
 		dbname, file = args[0], args[1]
 	default:
-		return &usageError{
-			err: fmt.Errorf("too many arguments"),
-		}
+		return fmt.Errorf("too many arguments")
 	}
-	db, err := database(dbname, s.GeneralOption)
+	db, err := database(dbname)
 	if err != nil {
 		return err
 	}
