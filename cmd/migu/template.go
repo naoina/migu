@@ -5,6 +5,8 @@ var (
 {{- if .Runnable}} {{.UseLine}}{{end}}
 {{- if .HasAvailableSubCommands}} {{.CommandPath}} [OPTIONS] COMMAND{{end}}
 
+{{if ne .Long ""}}{{ .Long | trim }}{{ else }}{{ .Short | trim }}{{end}}
+
 {{- if gt (len .Aliases) 0}}
 
 Aliases:
@@ -62,4 +64,6 @@ Additional help topics:
 Run '{{.CommandPath}} COMMAND --help' for more information about a command.
 {{end}}
 `
+
+	helpTemplate = `{{if or .Runnable .HasSubCommands}}{{.UsageString}}{{end}}`
 )

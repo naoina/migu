@@ -14,7 +14,8 @@ import (
 var (
 	progName = os.Args[0]
 	rootCmd  = &cobra.Command{
-		Use: progName,
+		Use:   progName,
+		Short: "An idempotent database schema migration tool",
 	}
 	generalOption struct {
 		User     string
@@ -39,11 +40,7 @@ func init() {
 	rootCmd.PersistentFlags().Bool("help", false, "Display this help and exit")
 	rootCmd.PersistentFlags().Lookup("help").Hidden = true
 	rootCmd.SetUsageTemplate(usageTemplate)
-	cobra.OnInitialize(func() {
-		for _, cmd := range rootCmd.Commands() {
-			cmd.DisableFlagsInUseLine = true
-		}
-	})
+	rootCmd.SetHelpTemplate(helpTemplate)
 }
 
 func database(dbname string) (db *sql.DB, err error) {
@@ -80,5 +77,8 @@ func database(dbname string) (db *sql.DB, err error) {
 }
 
 func main() {
+	for _, cmd := range rootCmd.Commands() {
+		cmd.DisableFlagsInUseLine = true
+	}
 	rootCmd.Execute()
 }
