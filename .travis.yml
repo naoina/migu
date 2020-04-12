@@ -17,4 +17,4 @@ install:
 before_script:
   - docker --version
 script:
-  - make GO_VERSION=$TRAVIS_GO_VERSION test-on-docker
+  - make GO_VERSION=$TRAVIS_GO_VERSION DB_IMAGE=$DB_IMAGE test-on-docker
