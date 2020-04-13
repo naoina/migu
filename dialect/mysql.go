@@ -179,16 +179,6 @@ func (d *MySQL) columnType(name string) (typ string, unsigned bool) {
 
 func (d *MySQL) defaultColumnType(name string) string {
 	switch name := strings.ToUpper(name); name {
-	case "TINYINT":
-		return "TINYINT(4)"
-	case "SMALLINT":
-		return "SMALLINT(6)"
-	case "MEDIUMINT":
-		return "MEDIUMINT(9)"
-	case "INT":
-		return "INT(11)"
-	case "BIGINT":
-		return "BIGINT(20)"
 	case "BIT":
 		return "BIT(1)"
 	case "DECIMAL":

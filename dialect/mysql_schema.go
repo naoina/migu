@@ -111,7 +111,32 @@ func (schema *mysqlColumnSchema) GoType() string {
 }
 
 func (schema *mysqlColumnSchema) ColumnType() string {
-	return schema.columnType
+	typ := schema.columnType
+	switch schema.dataType {
+	case "tinyint", "smallint", "mediumint", "int", "bigint":
+		if typ == "tinyint(1)" {
+			return typ
+		}
+		// NOTE: As of MySQL 8.0.17, the display width attribute is deprecated for integer data types.
+		//		 See https://dev.mysql.com/doc/refman/8.0/en/numeric-type-syntax.html
+		start, end := -1, -1
+		for i := 0; i < len(typ); i++ {
+			c := typ[i]
+			if c == '(' {
+				start = i
+				continue
+			}
+			if c == ')' {
+				end = i
+				break
+			}
+		}
+		if start < 0 || end < 0 {
+			return typ
+		}
+		return typ[:start] + typ[end+1:]
+	}
+	return typ
 }
 
 func (schema *mysqlColumnSchema) IsDatetime() bool {
