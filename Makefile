@@ -1,10 +1,11 @@
 BIN_NAME="$(notdir $(PWD))"
 BUILDFLAGS := -tags netgo -installsuffix netgo -ldflags '-w -s --extldflags "-static"'
-GO_VERSION := 1.10
+GO_VERSION := 1.14
 GO_PACKAGE := "$(shell go list)"
 DB_IMAGE := mariadb:10.1.33
-DB_HOST := migu-test-db-$(subst :,-,$(DB_IMAGE))
-DOCKER_NETWORK := migu-test-net-$(subst :,-,$(DB_IMAGE))
+DB_ID := $(subst /,-,$(subst :,-,$(DB_IMAGE)))
+DB_HOST := migu-test-db-$(DB_ID)
+DOCKER_NETWORK := migu-test-net-$(DB_ID)
 DATADIR := /tmp/$(DB_HOST)
 
 .PHONY: all
@@ -25,7 +26,9 @@ test-all: deps
 
 .PHONY: db
 db:
+ifneq ($(DOCKER_NETWORK),host)
 	docker network inspect -f '{{.Name}}: {{.Id}}' $(DOCKER_NETWORK) || docker network create $(DOCKER_NETWORK)
+endif
 	docker inspect -f='{{.Name}}: {{.Id}}' $(DB_HOST) || \
 		docker run \
 			--name=$(DB_HOST) \
@@ -60,4 +63,6 @@ endif
 clean:
 	$(RM) -f $(BIN_NAME)
 	-docker kill $(DB_HOST)
+ifneq ($(DOCKER_NETWORK),host)
 	-docker network rm $(DOCKER_NETWORK)
+endif
