@@ -4,8 +4,8 @@ type ColumnSchema interface {
 	TableName() string
 	ColumnName() string
 	ColumnType() string
+	DataType() string
 	GoType() string
-	IsDatetime() bool
 	IsPrimaryKey() bool
 	IsAutoIncrement() bool
 	Index() (name string, unique bool, ok bool)

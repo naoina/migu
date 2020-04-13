@@ -502,9 +502,13 @@ func Fprint(output io.Writer, d dialect.Dialect) error {
 	if err != nil {
 		return err
 	}
-	if hasDatetimeColumn(tableMap) {
-		if err := fprintln(output, importAST("time")); err != nil {
-			return err
+	for _, schemas := range tableMap {
+		for _, schema := range schemas {
+			if pkg := d.ImportPackage(schema); pkg != "" {
+				if err := fprintln(output, importAST(pkg)); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	names := make([]string, 0, len(tableMap))
@@ -661,17 +665,6 @@ func columnSQL(d dialect.Dialect, f *field) string {
 		column = append(column, "COMMENT", d.QuoteString(f.Comment))
 	}
 	return strings.Join(column, " ")
-}
-
-func hasDatetimeColumn(t map[string][]dialect.ColumnSchema) bool {
-	for _, schemas := range t {
-		for _, schema := range schemas {
-			if schema.IsDatetime() {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func importAST(pkg string) ast.Decl {

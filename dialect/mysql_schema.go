@@ -139,8 +139,8 @@ func (schema *mysqlColumnSchema) ColumnType() string {
 	return typ
 }
 
-func (schema *mysqlColumnSchema) IsDatetime() bool {
-	return schema.dataType == "datetime"
+func (schema *mysqlColumnSchema) DataType() string {
+	return schema.dataType
 }
 
 func (schema *mysqlColumnSchema) IsPrimaryKey() bool {

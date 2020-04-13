@@ -113,6 +113,14 @@ func (d *MySQL) ColumnType(name string) string {
 	return strings.ToUpper(name)
 }
 
+func (d *MySQL) ImportPackage(schema ColumnSchema) string {
+	switch schema.DataType() {
+	case "datetime":
+		return "time"
+	}
+	return ""
+}
+
 func (d *MySQL) Quote(s string) string {
 	return fmt.Sprintf("`%s`", strings.Replace(s, "`", "``", -1))
 }
