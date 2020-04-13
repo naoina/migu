@@ -17,7 +17,7 @@ import (
 
 var d dialect.Dialect
 
-func init() {
+func TestMain(m *testing.M) {
 	dbHost := os.Getenv("DB_HOST")
 	if dbHost == "" {
 		dbHost = "localhost"
@@ -28,6 +28,10 @@ func init() {
 		panic(err)
 	}
 	d = dialect.NewMySQL(db)
+	os.Exit(func() int {
+		defer db.Close()
+		return m.Run()
+	}())
 }
 
 func exec(queries []string) (err error) {
