@@ -399,7 +399,8 @@ func TestDiff(t *testing.T) {
 				"Age uint8 `migu:\"column:col_b\"`",
 				"CreatedAt time.Time",
 			}, []string{
-				"ALTER TABLE `user` ADD `col_b` TINYINT UNSIGNED NOT NULL, DROP `col_a`",
+				"ALTER TABLE `user` ADD `col_b` TINYINT UNSIGNED NOT NULL",
+				"ALTER TABLE `user` DROP `col_a`",
 			}},
 			{5, []string{
 				"Age uint8",
@@ -522,8 +523,8 @@ func TestDiff(t *testing.T) {
 				"CreatedAt time.Time `migu:\"extra:ON UPDATE CURRENT_TIMESTAMP\"`",
 				"UpdatedAt time.Time",
 			}, []string{
-				"ALTER TABLE `user` CHANGE `created_at` `created_at` DATETIME NOT NULL ON UPDATE CURRENT_TIMESTAMP, " +
-					"CHANGE `updated_at` `updated_at` DATETIME NOT NULL",
+				"ALTER TABLE `user` CHANGE `created_at` `created_at` DATETIME NOT NULL ON UPDATE CURRENT_TIMESTAMP",
+				"ALTER TABLE `user` CHANGE `updated_at` `updated_at` DATETIME NOT NULL",
 			}},
 		} {
 			v := v
@@ -575,7 +576,8 @@ func TestDiff(t *testing.T) {
 					"Fee float64",
 					"Point int `migu:\"type:smallint\"`",
 				}, []string{
-					"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL, ADD `point` SMALLINT NOT NULL",
+					"ALTER TABLE `user` CHANGE `fee` `fee` DOUBLE NOT NULL",
+					"ALTER TABLE `user` ADD `point` SMALLINT NOT NULL",
 				}},
 				{4, []string{
 					"Fee float64",

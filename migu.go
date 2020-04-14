@@ -95,7 +95,7 @@ func Diff(d dialect.Dialect, filename string, src interface{}) ([]string, error)
 			if err != nil {
 				return nil, err
 			}
-			f, err := newField(d, typeName, fld)
+			f, err := newField(d, name, typeName, fld)
 			if err != nil {
 				return nil, err
 			}
@@ -134,35 +134,36 @@ func Diff(d dialect.Dialect, filename string, src interface{}) ([]string, error)
 				if err != nil {
 					return nil, err
 				}
-				f, err := newField(d, fmt.Sprint(oldFieldAST.Type), oldFieldAST)
+				f, err := newField(d, name, fmt.Sprint(oldFieldAST.Type), oldFieldAST)
 				if err != nil {
 					return nil, err
 				}
 				oldFields = append(oldFields, f)
 			}
 			fields := makeAlterTableFields(oldFields, tbl.Fields)
-			specs := make([]string, 0, len(fields))
 			for _, f := range fields {
 				switch {
 				case f.IsAdded():
-					specs = append(specs, fmt.Sprintf("ADD %s", columnSQL(d, f.new)))
+					migrations = append(migrations, d.AddColumnSQL(f.new.ToField()))
 				case f.IsDropped():
-					specs = append(specs, fmt.Sprintf("DROP %s", d.Quote(f.old.Column)))
+					migrations = append(migrations, d.DropColumnSQL(f.old.ToField()))
 				case f.IsModified():
-					specs = append(specs, fmt.Sprintf("CHANGE %s %s", d.Quote(f.old.Column), columnSQL(d, f.new)))
+					migrations = append(migrations, d.ModifyColumnSQL(f.old.ToField(), f.new.ToField()))
 				}
 			}
-			if pkColumns, changed := makePrimaryKeyColumns(oldFields, tbl.Fields); len(pkColumns) > 0 {
-				if changed {
-					specs = append(specs, "DROP PRIMARY KEY")
+			if d, ok := d.(dialect.PrimaryKeyModifier); ok {
+				oldPks, newPks := makePrimaryKeyColumns(oldFields, tbl.Fields)
+				if len(oldPks) > 0 || len(newPks) > 0 {
+					oldPrimaryKeyFields := make([]dialect.Field, len(oldPks))
+					for i, pk := range oldPks {
+						oldPrimaryKeyFields[i] = pk.ToField()
+					}
+					newPrimaryKeyFields := make([]dialect.Field, len(newPks))
+					for i, pk := range newPks {
+						newPrimaryKeyFields[i] = pk.ToField()
+					}
+					migrations = append(migrations, d.ModifyPrimaryKeySQL(oldPrimaryKeyFields, newPrimaryKeyFields)...)
 				}
-				for i, c := range pkColumns {
-					pkColumns[i] = d.Quote(c)
-				}
-				specs = append(specs, fmt.Sprintf("ADD PRIMARY KEY (%s)", strings.Join(pkColumns, ", ")))
-			}
-			if len(specs) > 0 {
-				migrations = append(migrations, fmt.Sprintf("ALTER TABLE %s %s", tableName, strings.Join(specs, ", ")))
 			}
 			for _, f := range fields {
 				if f.IsDropped() {
@@ -170,22 +171,21 @@ func Diff(d dialect.Dialect, filename string, src interface{}) ([]string, error)
 				}
 			}
 		} else {
-			columns := make([]string, len(tbl.Fields))
+			fields := make([]dialect.Field, len(tbl.Fields))
 			for i, f := range tbl.Fields {
-				columns[i] = columnSQL(d, f)
+				fields[i] = f.ToField()
 			}
-			if pkColumns, _ := makePrimaryKeyColumns(oldFields, tbl.Fields); len(pkColumns) > 0 {
-				for i, c := range pkColumns {
-					pkColumns[i] = d.Quote(c)
-				}
-				columns = append(columns, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(pkColumns, ", ")))
+			_, newPks := makePrimaryKeyColumns(oldFields, tbl.Fields)
+			pkColumns := make([]string, len(newPks))
+			for i, pk := range newPks {
+				pkColumns[i] = pk.ToField().Name
 			}
-			query := fmt.Sprintf("CREATE TABLE %s (\n"+
-				"  %s\n"+
-				")", tableName, strings.Join(columns, ",\n  "))
-			if tbl.Option != "" {
-				query += " " + tbl.Option
-			}
+			query := d.CreateTableSQL(dialect.Table{
+				Name:        name,
+				Fields:      fields,
+				PrimaryKeys: pkColumns,
+				Option:      tbl.Option,
+			})
 			migrations = append(migrations, query)
 		}
 		addIndexes, dropIndexes := makeIndexes(oldFields, tbl.Fields)
@@ -259,6 +259,7 @@ type index struct {
 }
 
 type field struct {
+	Table         string
 	Name          string
 	GoType        string
 	Type          string
@@ -274,8 +275,9 @@ type field struct {
 	Nullable      bool
 }
 
-func newField(d dialect.Dialect, typeName string, f *ast.Field) (*field, error) {
+func newField(d dialect.Dialect, tableName string, typeName string, f *ast.Field) (*field, error) {
 	ret := &field{
+		Table:  tableName,
 		GoType: typeName,
 	}
 	if len(f.Names) > 0 && f.Names[0] != nil {
@@ -357,30 +359,43 @@ func (f *field) IsEmbedded() bool {
 	return f.Name == ""
 }
 
-func makePrimaryKeyColumns(oldFields, newFields []*field) (pkColumns []string, changed bool) {
+func (f *field) ToField() dialect.Field {
+	return dialect.Field{
+		Table:         f.Table,
+		Name:          f.Column,
+		Type:          f.Type,
+		Comment:       f.Comment,
+		AutoIncrement: f.AutoIncrement,
+		Default:       f.Default,
+		Extra:         f.Extra,
+		Nullable:      f.Nullable,
+	}
+}
+
+func makePrimaryKeyColumns(oldFields, newFields []*field) (oldPks, newPks []*field) {
 	for _, f := range newFields {
 		if f.PrimaryKey {
-			pkColumns = append(pkColumns, f.Column)
+			newPks = append(newPks, f)
 		}
 	}
-	m := map[string]struct{}{}
 	for _, f := range oldFields {
 		if f.PrimaryKey {
-			m[f.Column] = struct{}{}
+			oldPks = append(oldPks, f)
 		}
 	}
-	if len(m) != len(pkColumns) {
-		if len(m) == 0 {
-			return pkColumns, false
-		}
-		return pkColumns, true
+	if len(oldPks) != len(newPks) {
+		return oldPks, newPks
 	}
-	for _, pk := range pkColumns {
-		if _, exists := m[pk]; !exists {
-			return pkColumns, true
+	m := make(map[string]struct{}, len(oldPks))
+	for _, f := range oldPks {
+		m[f.Column] = struct{}{}
+	}
+	for _, pk := range newPks {
+		if _, exists := m[pk.Column]; !exists {
+			return oldPks, newPks
 		}
 	}
-	return nil, false
+	return nil, nil
 }
 
 func makeIndexes(oldFields, newFields []*field) (addIndexes, dropIndexes []*index) {
@@ -554,15 +569,6 @@ func getTableMap(d dialect.Dialect, tables ...string) (map[string][]dialect.Colu
 	return tableMap, nil
 }
 
-func formatDefault(d dialect.Dialect, t, def string) string {
-	switch t {
-	case "string":
-		return d.QuoteString(def)
-	default:
-		return def
-	}
-}
-
 func fprintln(output io.Writer, decl ast.Decl) error {
 	if err := format.Node(output, token.NewFileSet(), decl); err != nil {
 		return err
@@ -645,26 +651,6 @@ func detectTypeName(n ast.Node) (string, error) {
 	default:
 		return "", fmt.Errorf("migu: BUG: unknown type %T", t)
 	}
-}
-
-func columnSQL(d dialect.Dialect, f *field) string {
-	column := []string{d.Quote(f.Column), f.Type}
-	if !f.Nullable {
-		column = append(column, "NOT NULL")
-	}
-	if f.Default != "" {
-		column = append(column, "DEFAULT", formatDefault(d, f.GoType, f.Default))
-	}
-	if f.AutoIncrement && d.AutoIncrement() != "" {
-		column = append(column, d.AutoIncrement())
-	}
-	if f.Extra != "" {
-		column = append(column, f.Extra)
-	}
-	if f.Comment != "" {
-		column = append(column, "COMMENT", d.QuoteString(f.Comment))
-	}
-	return strings.Join(column, " ")
 }
 
 func importAST(pkg string) ast.Decl {

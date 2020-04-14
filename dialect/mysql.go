@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+var _ PrimaryKeyModifier = &MySQL{}
+
 type MySQL struct {
 	db      *sql.DB
 	dbName  string
@@ -129,8 +131,89 @@ func (d *MySQL) QuoteString(s string) string {
 	return fmt.Sprintf("'%s'", strings.Replace(s, "'", "''", -1))
 }
 
-func (d *MySQL) AutoIncrement() string {
-	return "AUTO_INCREMENT"
+func (d *MySQL) CreateTableSQL(table Table) string {
+	columns := make([]string, len(table.Fields))
+	for i, f := range table.Fields {
+		columns[i] = d.columnSQL(f)
+	}
+	if len(table.PrimaryKeys) > 0 {
+		pkColumns := make([]string, len(table.PrimaryKeys))
+		for i, pk := range table.PrimaryKeys {
+			pkColumns[i] = d.Quote(pk)
+		}
+		columns = append(columns, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(pkColumns, ", ")))
+	}
+	query := fmt.Sprintf("CREATE TABLE %s (\n"+
+		"  %s\n"+
+		")", d.Quote(table.Name), strings.Join(columns, ",\n  "))
+	if table.Option != "" {
+		query += " " + table.Option
+	}
+	return query
+}
+
+func (d *MySQL) AddColumnSQL(field Field) string {
+	return fmt.Sprintf("ALTER TABLE %s ADD %s", d.Quote(field.Table), d.columnSQL(field))
+}
+
+func (d *MySQL) DropColumnSQL(field Field) string {
+	return fmt.Sprintf("ALTER TABLE %s DROP %s", d.Quote(field.Table), d.Quote(field.Name))
+}
+
+func (d *MySQL) ModifyColumnSQL(oldField, newField Field) string {
+	return fmt.Sprintf("ALTER TABLE %s CHANGE %s %s", d.Quote(newField.Table), d.Quote(oldField.Name), d.columnSQL(newField))
+}
+
+func (d *MySQL) ModifyPrimaryKeySQL(oldPrimaryKeys, newPrimaryKeys []Field) []string {
+	var tableName string
+	if len(newPrimaryKeys) > 0 {
+		tableName = newPrimaryKeys[0].Table
+	} else {
+		tableName = oldPrimaryKeys[0].Table
+	}
+	var specs []string
+	if len(oldPrimaryKeys) > 0 {
+		specs = append(specs, "DROP PRIMARY KEY")
+	}
+	pkColumns := make([]string, len(newPrimaryKeys))
+	for i, pk := range newPrimaryKeys {
+		pkColumns[i] = d.Quote(pk.Name)
+	}
+	specs = append(specs, fmt.Sprintf("ADD PRIMARY KEY (%s)", strings.Join(pkColumns, ", ")))
+	return []string{fmt.Sprintf("ALTER TABLE %s %s", d.Quote(tableName), strings.Join(specs, ", "))}
+}
+
+func (d *MySQL) columnSQL(f Field) string {
+	column := []string{d.Quote(f.Name), f.Type}
+	if !f.Nullable {
+		column = append(column, "NOT NULL")
+	}
+	if def := f.Default; def != "" {
+		if d.isTextType(f) {
+			def = d.QuoteString(def)
+		}
+		column = append(column, "DEFAULT", def)
+	}
+	if f.AutoIncrement {
+		column = append(column, "AUTO_INCREMENT")
+	}
+	if f.Extra != "" {
+		column = append(column, f.Extra)
+	}
+	if f.Comment != "" {
+		column = append(column, "COMMENT", d.QuoteString(f.Comment))
+	}
+	return strings.Join(column, " ")
+}
+
+func (d *MySQL) isTextType(f Field) bool {
+	typ := strings.ToUpper(f.Type)
+	for _, t := range []string{"VARCHAR", "CHAR", "TEXT", "MIDIUMTEXT", "LONGTEXt"} {
+		if strings.HasPrefix(typ, t) {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *MySQL) Begin() (Transactioner, error) {
