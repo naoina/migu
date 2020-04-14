@@ -11,6 +11,8 @@ type Dialect interface {
 	AddColumnSQL(field Field) string
 	DropColumnSQL(field Field) string
 	ModifyColumnSQL(oldField, newfield Field) string
+	CreateIndexSQL(index Index) string
+	DropIndexSQL(index Index) string
 
 	Begin() (Transactioner, error)
 }
@@ -41,4 +43,11 @@ type Field struct {
 	Default       string
 	Extra         string
 	Nullable      bool
+}
+
+type Index struct {
+	Table   string
+	Name    string
+	Columns []string
+	Unique  bool
 }

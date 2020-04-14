@@ -126,7 +126,6 @@ func Diff(d dialect.Dialect, filename string, src interface{}) ([]string, error)
 	droppedColumn := map[string]struct{}{}
 	for _, name := range names {
 		tbl := structMap[name]
-		tableName := d.Quote(name)
 		var oldFields []*field
 		if columns, ok := tableMap[name]; ok {
 			for _, c := range columns {
@@ -193,19 +192,11 @@ func Diff(d dialect.Dialect, filename string, src interface{}) ([]string, error)
 			// If the column which has the index will be deleted, Migu will not delete the index related to the column
 			// because the index will be deleted when the column which related to the index will be deleted.
 			if _, ok := droppedColumn[index.Columns[0]]; !ok {
-				migrations = append(migrations, fmt.Sprintf("DROP INDEX %s ON %s", d.Quote(index.Name), tableName))
+				migrations = append(migrations, d.DropIndexSQL(index.ToIndex()))
 			}
 		}
 		for _, index := range addIndexes {
-			columns := make([]string, 0, len(index.Columns))
-			for _, c := range index.Columns {
-				columns = append(columns, d.Quote(c))
-			}
-			if index.Unique {
-				migrations = append(migrations, fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", d.Quote(index.Name), tableName, strings.Join(columns, ",")))
-			} else {
-				migrations = append(migrations, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", d.Quote(index.Name), tableName, strings.Join(columns, ",")))
-			}
+			migrations = append(migrations, d.CreateIndexSQL(index.ToIndex()))
 		}
 		delete(structMap, name)
 		delete(tableMap, name)
@@ -253,9 +244,19 @@ type table struct {
 }
 
 type index struct {
+	Table   string
 	Name    string
 	Columns []string
 	Unique  bool
+}
+
+func (i *index) ToIndex() dialect.Index {
+	return dialect.Index{
+		Table:   i.Table,
+		Name:    i.Name,
+		Columns: i.Columns,
+		Unique:  i.Unique,
+	}
 }
 
 type field struct {
@@ -417,7 +418,11 @@ func makeIndexes(oldFields, newFields []*field) (addIndexes, dropIndexes []*inde
 		for _, name := range oindexes {
 			if !inStrings(nindexes, name) {
 				if dropIndexMap[name] == nil {
-					dropIndexMap[name] = &index{Name: name, Unique: false}
+					dropIndexMap[name] = &index{
+						Table:  f.Table,
+						Name:   name,
+						Unique: false,
+					}
 					dropIndexNames = append(dropIndexNames, name)
 				}
 				dropIndexMap[name].Columns = append(dropIndexMap[name].Columns, oldField.Column)
@@ -426,7 +431,11 @@ func makeIndexes(oldFields, newFields []*field) (addIndexes, dropIndexes []*inde
 		for _, name := range oldUniqueIndexes {
 			if !inStrings(newUniqueIndexes, name) {
 				if dropIndexMap[name] == nil {
-					dropIndexMap[name] = &index{Name: name, Unique: true}
+					dropIndexMap[name] = &index{
+						Table:  f.Table,
+						Name:   name,
+						Unique: true,
+					}
 					dropIndexNames = append(dropIndexNames, name)
 				}
 				dropIndexMap[name].Columns = append(dropIndexMap[name].Columns, oldField.Column)
@@ -435,7 +444,11 @@ func makeIndexes(oldFields, newFields []*field) (addIndexes, dropIndexes []*inde
 		for _, name := range nindexes {
 			if !inStrings(oindexes, name) {
 				if addIndexMap[name] == nil {
-					addIndexMap[name] = &index{Name: name, Unique: false}
+					addIndexMap[name] = &index{
+						Table:  f.Table,
+						Name:   name,
+						Unique: false,
+					}
 					addIndexNames = append(addIndexNames, name)
 				}
 				addIndexMap[name].Columns = append(addIndexMap[name].Columns, f.Column)
@@ -444,7 +457,11 @@ func makeIndexes(oldFields, newFields []*field) (addIndexes, dropIndexes []*inde
 		for _, name := range newUniqueIndexes {
 			if !inStrings(oldUniqueIndexes, name) {
 				if addIndexMap[name] == nil {
-					addIndexMap[name] = &index{Name: name, Unique: true}
+					addIndexMap[name] = &index{
+						Table:  f.Table,
+						Name:   name,
+						Unique: true,
+					}
 					addIndexNames = append(addIndexNames, name)
 				}
 				addIndexMap[name].Columns = append(addIndexMap[name].Columns, f.Column)
