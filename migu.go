@@ -324,7 +324,7 @@ func (f *field) Indexes() []string {
 	indexes := make([]string, 0, len(f.RawIndexes))
 	for _, index := range f.RawIndexes {
 		if index == "" {
-			index = f.Column
+			index = stringutil.ToSnakeCase(f.Table) + "_" + f.Column
 		}
 		indexes = append(indexes, index)
 	}
@@ -335,7 +335,7 @@ func (f *field) UniqueIndexes() []string {
 	uniques := make([]string, 0, len(f.RawUniques))
 	for _, u := range f.RawUniques {
 		if u == "" {
-			u = f.Column
+			u = stringutil.ToSnakeCase(f.Table) + "_" + f.Column
 		}
 		uniques = append(uniques, u)
 	}

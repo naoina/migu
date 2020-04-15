@@ -196,26 +196,26 @@ func TestDiff(t *testing.T) {
 					"  `age` INT NOT NULL,\n" +
 					"  `created_at` DATETIME NOT NULL\n" +
 					")",
-				"CREATE INDEX `age` ON `user` (`age`)",
+				"CREATE INDEX `user_age` ON `user` (`age`)",
 			}},
 			{2, []string{
 				"Age int `migu:\"index\"`",
 				"CreatedAt time.Time `migu:\"index\"`",
 			}, []string{
-				"CREATE INDEX `created_at` ON `user` (`created_at`)",
+				"CREATE INDEX `user_created_at` ON `user` (`created_at`)",
 			}},
 			{3, []string{
 				"Age int `migu:\"index:age_index\"`",
 				"CreatedAt time.Time `migu:\"index\"`",
 			}, []string{
-				"DROP INDEX `age` ON `user`",
+				"DROP INDEX `user_age` ON `user`",
 				"CREATE INDEX `age_index` ON `user` (`age`)",
 			}},
 			{4, []string{
 				"Age int `migu:\"index:age_index\"`",
 				"CreatedAt time.Time",
 			}, []string{
-				"DROP INDEX `created_at` ON `user`",
+				"DROP INDEX `user_created_at` ON `user`",
 			}},
 			{5, []string{
 				"Age int `migu:\"index:age_created_at_index\"`",
@@ -234,34 +234,34 @@ func TestDiff(t *testing.T) {
 				"Age int `migu:\"unique\"`",
 				"CreatedAt time.Time",
 			}, []string{
-				"CREATE UNIQUE INDEX `age` ON `user` (`age`)",
+				"CREATE UNIQUE INDEX `user_age` ON `user` (`age`)",
 			}},
 			{8, []string{
 				"Age int `migu:\"unique\"`",
 				"CreatedAt time.Time `migu:\"unique\"`",
 			}, []string{
-				"CREATE UNIQUE INDEX `created_at` ON `user` (`created_at`)",
+				"CREATE UNIQUE INDEX `user_created_at` ON `user` (`created_at`)",
 			}},
 			{9, []string{
 				"Age int `migu:\"index\"`",
 				"CreatedAt time.Time `migu:\"unique\"`",
 			}, []string{
-				"DROP INDEX `age` ON `user`",
-				"CREATE INDEX `age` ON `user` (`age`)",
+				"DROP INDEX `user_age` ON `user`",
+				"CREATE INDEX `user_age` ON `user` (`age`)",
 			}},
 			{10, []string{
 				"Age int `migu:\"unique\"`",
 				"CreatedAt time.Time",
 			}, []string{
-				"DROP INDEX `age` ON `user`",
-				"DROP INDEX `created_at` ON `user`",
-				"CREATE UNIQUE INDEX `age` ON `user` (`age`)",
+				"DROP INDEX `user_age` ON `user`",
+				"DROP INDEX `user_created_at` ON `user`",
+				"CREATE UNIQUE INDEX `user_age` ON `user` (`age`)",
 			}},
 			{11, []string{
 				"Age int `migu:\"unique:age_unique_index\"`",
 				"CreatedAt time.Time",
 			}, []string{
-				"DROP INDEX `age` ON `user`",
+				"DROP INDEX `user_age` ON `user`",
 				"CREATE UNIQUE INDEX `age_unique_index` ON `user` (`age`)",
 			}},
 			{12, []string{
@@ -311,7 +311,7 @@ func TestDiff(t *testing.T) {
 			"CREATE TABLE `user` (\n" +
 				"  `age` INT NOT NULL\n" +
 				")",
-			"CREATE UNIQUE INDEX `age` ON `user` (`age`)",
+			"CREATE UNIQUE INDEX `user_age` ON `user` (`age`)",
 		}
 		if diff := cmp.Diff(actual, expect); diff != "" {
 			t.Errorf("(-got +want)\n%v", diff)
@@ -340,7 +340,7 @@ func TestDiff(t *testing.T) {
 				"CreatedAt time.Time `migu:\"unique:created_at_unique_index\"`",
 			}, []string{
 				"DROP INDEX `age_created_at_unique_index` ON `user`",
-				"CREATE INDEX `age` ON `user` (`age`)",
+				"CREATE INDEX `user_age` ON `user` (`age`)",
 				"CREATE UNIQUE INDEX `created_at_unique_index` ON `user` (`created_at`)",
 			}},
 		} {
