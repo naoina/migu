@@ -143,11 +143,11 @@ func Diff(d dialect.Dialect, filename string, src interface{}) ([]string, error)
 			for _, f := range fields {
 				switch {
 				case f.IsAdded():
-					migrations = append(migrations, d.AddColumnSQL(f.new.ToField()))
+					migrations = append(migrations, d.AddColumnSQL(f.new.ToField())...)
 				case f.IsDropped():
-					migrations = append(migrations, d.DropColumnSQL(f.old.ToField()))
+					migrations = append(migrations, d.DropColumnSQL(f.old.ToField())...)
 				case f.IsModified():
-					migrations = append(migrations, d.ModifyColumnSQL(f.old.ToField(), f.new.ToField()))
+					migrations = append(migrations, d.ModifyColumnSQL(f.old.ToField(), f.new.ToField())...)
 				}
 			}
 			if d, ok := d.(dialect.PrimaryKeyModifier); ok {
@@ -179,24 +179,23 @@ func Diff(d dialect.Dialect, filename string, src interface{}) ([]string, error)
 			for i, pk := range newPks {
 				pkColumns[i] = pk.ToField().Name
 			}
-			query := d.CreateTableSQL(dialect.Table{
+			migrations = append(migrations, d.CreateTableSQL(dialect.Table{
 				Name:        name,
 				Fields:      fields,
 				PrimaryKeys: pkColumns,
 				Option:      tbl.Option,
-			})
-			migrations = append(migrations, query)
+			})...)
 		}
 		addIndexes, dropIndexes := makeIndexes(oldFields, tbl.Fields)
 		for _, index := range dropIndexes {
 			// If the column which has the index will be deleted, Migu will not delete the index related to the column
 			// because the index will be deleted when the column which related to the index will be deleted.
 			if _, ok := droppedColumn[index.Columns[0]]; !ok {
-				migrations = append(migrations, d.DropIndexSQL(index.ToIndex()))
+				migrations = append(migrations, d.DropIndexSQL(index.ToIndex())...)
 			}
 		}
 		for _, index := range addIndexes {
-			migrations = append(migrations, d.CreateIndexSQL(index.ToIndex()))
+			migrations = append(migrations, d.CreateIndexSQL(index.ToIndex())...)
 		}
 		delete(structMap, name)
 		delete(tableMap, name)

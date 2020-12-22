@@ -131,7 +131,7 @@ func (d *MySQL) QuoteString(s string) string {
 	return fmt.Sprintf("'%s'", strings.Replace(s, "'", "''", -1))
 }
 
-func (d *MySQL) CreateTableSQL(table Table) string {
+func (d *MySQL) CreateTableSQL(table Table) []string {
 	columns := make([]string, len(table.Fields))
 	for i, f := range table.Fields {
 		columns[i] = d.columnSQL(f)
@@ -149,19 +149,19 @@ func (d *MySQL) CreateTableSQL(table Table) string {
 	if table.Option != "" {
 		query += " " + table.Option
 	}
-	return query
+	return []string{query}
 }
 
-func (d *MySQL) AddColumnSQL(field Field) string {
-	return fmt.Sprintf("ALTER TABLE %s ADD %s", d.Quote(field.Table), d.columnSQL(field))
+func (d *MySQL) AddColumnSQL(field Field) []string {
+	return []string{fmt.Sprintf("ALTER TABLE %s ADD %s", d.Quote(field.Table), d.columnSQL(field))}
 }
 
-func (d *MySQL) DropColumnSQL(field Field) string {
-	return fmt.Sprintf("ALTER TABLE %s DROP %s", d.Quote(field.Table), d.Quote(field.Name))
+func (d *MySQL) DropColumnSQL(field Field) []string {
+	return []string{fmt.Sprintf("ALTER TABLE %s DROP %s", d.Quote(field.Table), d.Quote(field.Name))}
 }
 
-func (d *MySQL) ModifyColumnSQL(oldField, newField Field) string {
-	return fmt.Sprintf("ALTER TABLE %s CHANGE %s %s", d.Quote(newField.Table), d.Quote(oldField.Name), d.columnSQL(newField))
+func (d *MySQL) ModifyColumnSQL(oldField, newField Field) []string {
+	return []string{fmt.Sprintf("ALTER TABLE %s CHANGE %s %s", d.Quote(newField.Table), d.Quote(oldField.Name), d.columnSQL(newField))}
 }
 
 func (d *MySQL) ModifyPrimaryKeySQL(oldPrimaryKeys, newPrimaryKeys []Field) []string {
@@ -183,7 +183,7 @@ func (d *MySQL) ModifyPrimaryKeySQL(oldPrimaryKeys, newPrimaryKeys []Field) []st
 	return []string{fmt.Sprintf("ALTER TABLE %s %s", d.Quote(tableName), strings.Join(specs, ", "))}
 }
 
-func (d *MySQL) CreateIndexSQL(index Index) string {
+func (d *MySQL) CreateIndexSQL(index Index) []string {
 	columns := make([]string, len(index.Columns))
 	for i, c := range index.Columns {
 		columns[i] = d.Quote(c)
@@ -192,13 +192,13 @@ func (d *MySQL) CreateIndexSQL(index Index) string {
 	tableName := d.Quote(index.Table)
 	column := strings.Join(columns, ",")
 	if index.Unique {
-		return fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", indexName, tableName, column)
+		return []string{fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", indexName, tableName, column)}
 	}
-	return fmt.Sprintf("CREATE INDEX %s ON %s (%s)", indexName, tableName, column)
+	return []string{fmt.Sprintf("CREATE INDEX %s ON %s (%s)", indexName, tableName, column)}
 }
 
-func (d *MySQL) DropIndexSQL(index Index) string {
-	return fmt.Sprintf("DROP INDEX %s ON %s", d.Quote(index.Name), d.Quote(index.Table))
+func (d *MySQL) DropIndexSQL(index Index) []string {
+	return []string{fmt.Sprintf("DROP INDEX %s ON %s", d.Quote(index.Name), d.Quote(index.Table))}
 }
 
 func (d *MySQL) columnSQL(f Field) string {
