@@ -1,4 +1,4 @@
-# Migu [![build-and-test](https://github.com/naoina/migu/workflows/build-and-test/badge.svg)](https://github.com/naoina/migu/actions?query=workflow%3Abuild-and-test)
+# Migu [![build-and-test](https://github.com/naoina/migu/workflows/build-and-test/badge.svg)](https://github.com/naoina/migu/actions?query=workflow%3Abuild-and-test) [![Go Reference](https://pkg.go.dev/badge/github.com/naoina/migu.svg)](https://pkg.go.dev/github.com/naoina/migu)
 
 Migu is an idempotent database schema migration tool for [Go](http://golang.org).
 
