@@ -1305,6 +1305,19 @@ func TestFprint(t *testing.T) {
 			"	ID uint64 `migu:\"type:bigint unsigned\"`\n" +
 			"}\n\n",
 		},
+		{14, []string{
+			"CREATE TABLE user (\n" +
+				"  created_at DATETIME NOT NULL,\n" +
+				"  updated_at DATETIME NOT NULL\n" +
+				")",
+		}, `import "time"` + "\n" +
+			"\n" +
+			"//+migu\n" +
+			"type User struct {\n" +
+			"	CreatedAt time.Time `migu:\"type:datetime\"`\n" +
+			"	UpdatedAt time.Time `migu:\"type:datetime\"`\n" +
+			"}\n\n",
+		},
 	} {
 		v := v
 		t.Run(fmt.Sprintf("%v", v.i), func(t *testing.T) {

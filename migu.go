@@ -533,13 +533,22 @@ func Fprint(output io.Writer, d dialect.Dialect) error {
 	if err != nil {
 		return err
 	}
+	pkgMap := map[string]struct{}{}
 	for _, schemas := range tableMap {
 		for _, schema := range schemas {
 			if pkg := d.ImportPackage(schema); pkg != "" {
-				if err := fprintln(output, importAST(pkg)); err != nil {
-					return err
-				}
+				pkgMap[pkg] = struct{}{}
 			}
+		}
+	}
+	if len(pkgMap) != 0 {
+		pkgs := make([]string, 0, len(pkgMap))
+		for pkg := range pkgMap {
+			pkgs = append(pkgs, pkg)
+		}
+		sort.Strings(pkgs)
+		if err := fprintln(output, importAST(pkgs)); err != nil {
+			return err
 		}
 	}
 	names := make([]string, 0, len(tableMap))
@@ -669,18 +678,19 @@ func detectTypeName(n ast.Node) (string, error) {
 	}
 }
 
-func importAST(pkg string) ast.Decl {
-	return &ast.GenDecl{
+func importAST(pkgs []string) ast.Decl {
+	decl := &ast.GenDecl{
 		Tok: token.IMPORT,
-		Specs: []ast.Spec{
-			&ast.ImportSpec{
-				Path: &ast.BasicLit{
-					Kind:  token.STRING,
-					Value: fmt.Sprintf(`"%s"`, pkg),
-				},
-			},
-		},
 	}
+	for _, pkg := range pkgs {
+		decl.Specs = append(decl.Specs, &ast.ImportSpec{
+			Path: &ast.BasicLit{
+				Kind:  token.STRING,
+				Value: fmt.Sprintf(`"%s"`, pkg),
+			},
+		})
+	}
+	return decl
 }
 
 func makeStructAST(d dialect.Dialect, name string, schemas []dialect.ColumnSchema) (ast.Decl, error) {
