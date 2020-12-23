@@ -28,12 +28,19 @@ const (
 var (
 	void            = struct{}{}
 	nullableTypeMap = map[string]struct{}{
-		"sql.NullString":  void,
-		"sql.NullBool":    void,
-		"sql.NullInt64":   void,
-		"sql.NullFloat64": void,
-		"mysql.NullTime":  void,
-		"gorp.NullTime":   void,
+		"sql.NullString":      void,
+		"sql.NullBool":        void,
+		"sql.NullInt64":       void,
+		"sql.NullFloat64":     void,
+		"mysql.NullTime":      void,
+		"gorp.NullTime":       void,
+		"spanner.NullString":  void,
+		"spanner.NullFloat64": void,
+		"spanner.NullBool":    void,
+		"spanner.NullInt64":   void,
+		"spanner.NullTime":    void,
+		"spanner.NullDate":    void,
+		"spanner.NullNumeric": void,
 	}
 )
 

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path"
 	"time"
 
 	"github.com/naoina/migu"
@@ -20,7 +21,7 @@ func init() {
 		Use:   "sync [OPTIONS] DATABASE [FILE|DIRECTORY]",
 		Short: "synchronize the database schema",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return sync.Execute(args)
+			return sync.Execute(args, option)
 		},
 	}
 	syncCmd.Flags().BoolVar(&sync.DryRun, "dry-run", false, "")
@@ -34,7 +35,7 @@ type sync struct {
 	Quiet  bool
 }
 
-func (s *sync) Execute(args []string) error {
+func (s *sync) Execute(args []string, opt *Option) error {
 	var dbname string
 	var file string
 	switch len(args) {
@@ -47,15 +48,23 @@ func (s *sync) Execute(args []string) error {
 	default:
 		return fmt.Errorf("too many arguments")
 	}
-	db, err := database(dbname)
-	if err != nil {
-		return err
+	var di dialect.Dialect
+	switch typ := opt.global.DatabaseType; typ {
+	case databaseTypeMySQL, databaseTypeMariaDB:
+		db, err := openDatabase(dbname)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		di = dialect.NewMySQL(db)
+	case databaseTypeSpanner:
+		di = dialect.NewSpanner(path.Join("projects", opt.spanner.Project, "instances", opt.spanner.Instance, "databases", dbname))
+	default:
+		return fmt.Errorf("BUG: unknown database type: %s", typ)
 	}
-	defer db.Close()
 	if !s.DryRun {
 		dryRunMarker = ""
 	}
-	di := dialect.NewMySQL(db)
 	return s.run(di, file)
 }
 

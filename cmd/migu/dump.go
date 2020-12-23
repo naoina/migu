@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path"
 
 	"github.com/naoina/migu"
 	"github.com/naoina/migu/dialect"
@@ -15,7 +16,7 @@ func init() {
 		Use:   "dump [OPTIONS] DATABASE [FILE]",
 		Short: "dump the database schema as Go code",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return dump.Execute(args)
+			return dump.Execute(args, option)
 		},
 	}
 	dumpCmd.SetUsageTemplate(usageTemplate + "\nWith FILE, output to FILE.\n")
@@ -24,7 +25,7 @@ func init() {
 
 type dump struct{}
 
-func (d *dump) Execute(args []string) error {
+func (d *dump) Execute(args []string, opt *Option) error {
 	var dbname string
 	var filename string
 	switch len(args) {
@@ -37,12 +38,20 @@ func (d *dump) Execute(args []string) error {
 	default:
 		return fmt.Errorf("too many arguments")
 	}
-	db, err := database(dbname)
-	if err != nil {
-		return err
+	var di dialect.Dialect
+	switch typ := opt.global.DatabaseType; typ {
+	case databaseTypeMySQL, databaseTypeMariaDB:
+		db, err := openDatabase(dbname)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		di = dialect.NewMySQL(db)
+	case databaseTypeSpanner:
+		di = dialect.NewSpanner(path.Join("projects", opt.spanner.Project, "instances", opt.spanner.Instance, "databases", dbname))
+	default:
+		return fmt.Errorf("BUG: unknown database type: %s", typ)
 	}
-	defer db.Close()
-	di := dialect.NewMySQL(db)
 	return d.run(di, filename)
 }
 

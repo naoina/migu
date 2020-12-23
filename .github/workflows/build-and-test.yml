@@ -9,18 +9,25 @@ jobs:
           - 1.14
           - 1
           - master
-        db_image:
+        db:
           - mariadb:10.1
           - mariadb:10.2
           - mariadb:latest
           - mysql:5.6
           - mysql:5.7
           - mysql:latest
+          - spanner
+        include:
+          - db: spanner
+            db_image: gcr.io/cloud-spanner-emulator/emulator:latest
+            build_tag: spanner
+      fail-fast: false
     steps:
       - uses: actions/checkout@v2
       - name: Run tests
         run: |
           make \
             GO_VERSION=${{ matrix.go_version }} \
-            DB_IMAGE=${{ matrix.db_image }} \
+            DB_IMAGE=${{ matrix.db_image || matrix.db }} \
+            BUILD_TAG=${{ matrix.build_tag }} \
             test-on-docker

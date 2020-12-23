@@ -9,6 +9,13 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/howeyc/gopass"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+)
+
+const (
+	databaseTypeMySQL   = "mysql"
+	databaseTypeMariaDB = "mariadb"
+	databaseTypeSpanner = "spanner"
 )
 
 var (
@@ -16,36 +23,95 @@ var (
 	rootCmd  = &cobra.Command{
 		Use:   progName,
 		Short: "An idempotent database schema migration tool",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return validateFlags(option)
+		},
 	}
-	generalOption struct {
-		User     string
-		Host     string
-		Password string
-		Port     int
-		Protocol string
-	}
+	option      = &Option{}
 	protocolMap = map[string]string{
 		"tcp":    "tcp",
 		"socket": "unix",
 	}
 )
 
+type Option struct {
+	global struct {
+		DatabaseType string
+	}
+	mysql struct {
+		User     string
+		Host     string
+		Password string
+		Port     int
+		Protocol string
+	}
+	spanner struct {
+		Project  string
+		Instance string
+	}
+}
+
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&generalOption.Host, "host", "h", "", "Connect to host of database")
-	rootCmd.PersistentFlags().StringVarP(&generalOption.User, "user", "u", "", "User for login to database if not current user")
-	rootCmd.PersistentFlags().StringVarP(&generalOption.Password, "password", "p", "", "Password to use when connecting to server.\nIf password is not given, it's asked from the tty")
-	rootCmd.PersistentFlags().Lookup("password").NoOptDefVal = "PASS"
-	rootCmd.PersistentFlags().IntVarP(&generalOption.Port, "port", "P", 0, "Port number to use for connection")
-	rootCmd.PersistentFlags().StringVar(&generalOption.Protocol, "protocol", "tcp", "The protocol to use for connection (tcp, socket)")
+	flagsForGlobal := pflag.NewFlagSet("Global", pflag.ContinueOnError)
+	flagsForGlobal.StringVarP(&option.global.DatabaseType, "type", "t", databaseTypeMySQL, "Specify the database type (mysql|mariadb|spanner)")
+
+	flagsForMySQL := pflag.NewFlagSet("MySQL/MariaDB", pflag.ContinueOnError)
+	flagsForMySQL.StringVarP(&option.mysql.Host, "host", "h", "", "Connect to host of database")
+	flagsForMySQL.StringVarP(&option.mysql.User, "user", "u", "", "User for login to database if not current user")
+	flagsForMySQL.StringVarP(&option.mysql.Password, "password", "p", "", "Password to use when connecting to server.\nIf password is not given, it's asked from the tty")
+	flagsForMySQL.Lookup("password").NoOptDefVal = "PASS"
+	flagsForMySQL.IntVarP(&option.mysql.Port, "port", "P", 0, "Port number to use for connection")
+	flagsForMySQL.StringVar(&option.mysql.Protocol, "protocol", "tcp", "The protocol to use for connection (tcp, socket)")
+
+	flagsForSpanner := pflag.NewFlagSet("Cloud Spanner", pflag.ContinueOnError)
+	flagsForSpanner.StringVar(&option.spanner.Project, "project", os.Getenv("SPANNER_PROJECT_ID"), "The Google Cloud Platform project name")
+	if flag := flagsForSpanner.Lookup("project"); flag.DefValue == "" {
+		flag.DefValue = "$SPANNER_PROJECT_ID"
+	} else {
+		flag.DefValue += " from $SPANNER_PROJECT_ID"
+	}
+	flagsForSpanner.StringVar(&option.spanner.Instance, "instance", os.Getenv("SPANNER_INSTANCE_ID"), "The Cloud Spanner instance name")
+	if flag := flagsForSpanner.Lookup("instance"); flag.DefValue == "" {
+		flag.DefValue = "$SPANNER_INSTANCE_ID"
+	} else {
+		flag.DefValue += " from $SPANNER_INSTANCE_ID"
+	}
+
+	rootCmd.PersistentFlags().AddFlagSet(flagsForGlobal)
+	rootCmd.PersistentFlags().AddFlagSet(flagsForMySQL)
+	rootCmd.PersistentFlags().AddFlagSet(flagsForSpanner)
 	rootCmd.PersistentFlags().Bool("help", false, "Display this help and exit")
 	rootCmd.PersistentFlags().Lookup("help").Hidden = true
 	rootCmd.SetUsageTemplate(usageTemplate)
 	rootCmd.SetHelpTemplate(helpTemplate)
+	type flagset struct {
+		Name  string
+		Flags *pflag.FlagSet
+	}
+	cobra.AddTemplateFuncs(map[string]interface{}{
+		"flagsets": func() []flagset {
+			return []flagset{
+				{
+					Name:  "",
+					Flags: flagsForGlobal,
+				},
+				{
+					Name:  "MySQL/MariaDB",
+					Flags: flagsForMySQL,
+				},
+				{
+					Name:  "Cloud Spanner",
+					Flags: flagsForSpanner,
+				},
+			}
+		},
+	})
 }
 
-func database(dbname string) (db *sql.DB, err error) {
+func openDatabase(dbname string) (db *sql.DB, err error) {
+	opt := option.mysql
 	config := mysql.NewConfig()
-	config.User = generalOption.User
+	config.User = opt.User
 	if config.User == "" {
 		if config.User = os.Getenv("USERNAME"); config.User == "" {
 			if config.User = os.Getenv("USER"); config.User == "" {
@@ -53,7 +119,7 @@ func database(dbname string) (db *sql.DB, err error) {
 			}
 		}
 	}
-	config.Passwd = generalOption.Password
+	config.Passwd = opt.Password
 	if config.Passwd != "" {
 		if config.Passwd == "PASS" {
 			p, err := gopass.GetPasswdPrompt("Enter password: ", false, os.Stdin, os.Stderr)
@@ -63,17 +129,42 @@ func database(dbname string) (db *sql.DB, err error) {
 			config.Passwd = string(p)
 		}
 	}
-	protocol, ok := protocolMap[generalOption.Protocol]
-	if !ok {
-		return nil, fmt.Errorf("protocol must be 'tcp' or 'socket'")
-	}
-	config.Net = protocol
-	config.Addr = generalOption.Host
-	if generalOption.Port > 0 {
-		config.Addr = net.JoinHostPort(config.Addr, fmt.Sprintf("%d", generalOption.Port))
+	config.Net = protocolMap[opt.Protocol]
+	config.Addr = opt.Host
+	if opt.Port > 0 {
+		config.Addr = net.JoinHostPort(config.Addr, fmt.Sprintf("%d", opt.Port))
 	}
 	config.DBName = dbname
 	return sql.Open("mysql", config.FormatDSN())
+}
+
+func validateFlags(opt *Option) error {
+	if opt.global.DatabaseType == "" {
+		return fmt.Errorf("database type is required")
+	}
+	switch typ := opt.global.DatabaseType; typ {
+	case databaseTypeMySQL, databaseTypeMariaDB, databaseTypeSpanner:
+		// do nothing.
+	default:
+		return fmt.Errorf("unknown database type: %s", opt.global.DatabaseType)
+	}
+	switch opt.global.DatabaseType {
+	case databaseTypeMySQL, databaseTypeMariaDB:
+		if opt.mysql.Protocol == "" {
+			return fmt.Errorf("protocol is required")
+		}
+		if _, ok := protocolMap[opt.mysql.Protocol]; !ok {
+			return fmt.Errorf("unknown protocol: %s", opt.mysql.Protocol)
+		}
+	case databaseTypeSpanner:
+		if opt.spanner.Project == "" {
+			return fmt.Errorf("project is required")
+		}
+		if opt.spanner.Instance == "" {
+			return fmt.Errorf("instance is required")
+		}
+	}
+	return nil
 }
 
 func main() {

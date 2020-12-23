@@ -1,3 +1,5 @@
+//+build !spanner
+
 package migu_test
 
 import (

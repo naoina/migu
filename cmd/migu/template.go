@@ -34,16 +34,32 @@ Commands:
 {{- end}}
 
 {{- if .HasAvailableLocalFlags}}
+{{- if .HasParent}}
 
 Options:
 {{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+{{- else}}
+{{- range flagsets}}
+{{if eq .Name ""}}
+Options:
+{{- else}}
+Options for {{.Name}}:
+{{- end}}
+{{.Flags.FlagUsages | trimTrailingWhitespaces}}
+{{- end}}
+{{- end}}
 
 {{- end}}
 
 {{- if .HasAvailableInheritedFlags}}
-
+{{- range flagsets}}
+{{if eq .Name ""}}
 Global Options:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}
+{{- else}}
+Global Options for {{.Name}}:
+{{- end}}
+{{.Flags.FlagUsages | trimTrailingWhitespaces}}
+{{- end}}
 
 {{- end}}
 
