@@ -136,7 +136,7 @@ func Diff(d dialect.Dialect, filename string, src interface{}) ([]string, error)
 		var oldFields []*field
 		if columns, ok := tableMap[name]; ok {
 			for _, c := range columns {
-				oldFieldAST, err := fieldAST(c)
+				oldFieldAST, err := fieldAST(d, c)
 				if err != nil {
 					return nil, err
 				}
@@ -703,7 +703,7 @@ func importAST(pkgs []string) ast.Decl {
 func makeStructAST(d dialect.Dialect, name string, schemas []dialect.ColumnSchema) (ast.Decl, error) {
 	var fields []*ast.Field
 	for _, schema := range schemas {
-		f, err := fieldAST(schema)
+		f, err := fieldAST(d, schema)
 		if err != nil {
 			return nil, err
 		}
@@ -798,12 +798,12 @@ func tagOptionSplit(data []byte, atEOF bool) (advance int, token []byte, err err
 	return 0, data, bufio.ErrFinalToken
 }
 
-func fieldAST(schema dialect.ColumnSchema) (*ast.Field, error) {
+func fieldAST(d dialect.Dialect, schema dialect.ColumnSchema) (*ast.Field, error) {
 	field := &ast.Field{
 		Names: []*ast.Ident{
 			ast.NewIdent(stringutil.ToUpperCamelCase(schema.ColumnName())),
 		},
-		Type: ast.NewIdent(schema.GoType()),
+		Type: ast.NewIdent(d.GoType(schema.ColumnType(), schema.IsNullable())),
 	}
 	var tags []string
 	tags = append(tags, fmt.Sprintf("%s:%s", tagType, schema.ColumnType()))

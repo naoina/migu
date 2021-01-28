@@ -55,10 +55,6 @@ func (s *spannerColumnSchema) DataType() string {
 	return s.dataType.StringVal
 }
 
-func (s *spannerColumnSchema) GoType() string {
-	return s.goType(s.spannerType, s.IsNullable())
-}
-
 func (s *spannerColumnSchema) IsPrimaryKey() bool {
 	return s.indexType.Valid && s.indexType.StringVal == "PRIMARY_KEY"
 }
@@ -94,55 +90,4 @@ func (s *spannerColumnSchema) Extra() (string, bool) {
 func (s *spannerColumnSchema) Comment() (string, bool) {
 	// Cloud Spanner does not store any comments on a database table.
 	return "", false
-}
-
-func (s *spannerColumnSchema) goType(typ string, nullable bool) string {
-	if prefix := "ARRAY<"; strings.HasPrefix(typ, prefix) {
-		start := len(prefix)
-		end := strings.LastIndexByte(typ, '>')
-		return fmt.Sprintf("[]%s", s.goType(typ[start:end], false))
-	}
-	if end := strings.IndexByte(typ, '('); end >= 0 {
-		typ = typ[:end]
-	}
-	switch typ {
-	case "STRING":
-		if nullable {
-			return "*string"
-		}
-		return "string"
-	case "BYTES":
-		return "[]byte"
-	case "BOOL":
-		if nullable {
-			return "*bool"
-		}
-		return "bool"
-	case "INT64":
-		if nullable {
-			return "*int64"
-		}
-		return "int64"
-	case "FLOAT64":
-		if nullable {
-			return "*float64"
-		}
-		return "float64"
-	case "TIMESTAMP":
-		if nullable {
-			return "*time.Time"
-		}
-		return "time.Time"
-	case "DATE":
-		if nullable {
-			return "*civil.Date"
-		}
-		return "civil.Date"
-	case "NUMERIC":
-		if nullable {
-			return "*big.Rat"
-		}
-		return "big.Rat"
-	}
-	return "interface{}"
 }

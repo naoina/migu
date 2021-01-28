@@ -14,15 +14,68 @@ import (
 	"google.golang.org/grpc"
 )
 
+var (
+	spannerColumnTypes = []*ColumnType{
+		{
+			Types:           []string{"STRING(MAX)"},
+			GoTypes:         []string{"string"},
+			GoNullableTypes: []string{"*string", "spanner.NullString"},
+		},
+		{
+			Types:           []string{"BYTES(MAX)"},
+			GoTypes:         []string{"[]byte"},
+			GoNullableTypes: []string{"[]byte"},
+		},
+		{
+			Types:           []string{"BOOL"},
+			GoTypes:         []string{"bool"},
+			GoNullableTypes: []string{"*bool", "spanner.NullBool"},
+		},
+		{
+			Types:           []string{"INT64"},
+			GoTypes:         []string{"int64", "int", "int8", "int16", "int32", "uint8", "uint16", "uint32", "uint64"},
+			GoNullableTypes: []string{"*int64", "spanner.NullInt64"},
+		},
+		{
+			Types:           []string{"FLOAT64"},
+			GoTypes:         []string{"float64", "float32"},
+			GoNullableTypes: []string{"*float64", "spanner.NullFloat64"},
+		},
+		{
+			Types:           []string{"TIMESTAMP"},
+			GoTypes:         []string{"time.Time"},
+			GoNullableTypes: []string{"*time.Time", "spanner.NullTime"},
+		},
+		{
+			Types:           []string{"DATE"},
+			GoTypes:         []string{"civil.Date"},
+			GoNullableTypes: []string{"*civil.Date", "spanner.NullDate"},
+		},
+		{
+			Types:           []string{"NUMERIC"},
+			GoTypes:         []string{"big.Rat"},
+			GoNullableTypes: []string{"*big.Rat", "spanner.NullNumeric"},
+		},
+	}
+)
+
 type Spanner struct {
-	ac       *database.DatabaseAdminClient
-	c        *spanner.Client
-	database string
+	ac            *database.DatabaseAdminClient
+	c             *spanner.Client
+	database      string
+	columnTypeMap map[string]*ColumnType
 }
 
 func NewSpanner(database string) Dialect {
+	columnTypeMap := map[string]*ColumnType{}
+	for _, t := range spannerColumnTypes {
+		for _, tt := range t.allGoTypes() {
+			columnTypeMap[tt] = t
+		}
+	}
 	return &Spanner{
-		database: database,
+		database:      database,
+		columnTypeMap: columnTypeMap,
 	}
 }
 
@@ -112,28 +165,32 @@ func (s *Spanner) ColumnSchema(tables ...string) ([]ColumnSchema, error) {
 
 func (s *Spanner) ColumnType(name string) string {
 	name = strings.TrimLeft(name, "*")
-	switch name {
-	case "string", "spanner.NullString":
-		return "STRING(MAX)"
-	case "[]byte":
-		return "BYTES(MAX)"
-	case "bool", "spanner.NullBool":
-		return "BOOL"
-	case "int", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "spanner.NullInt64":
-		return "INT64"
-	case "float32", "float64", "spanner.NullFloat64":
-		return "FLOAT64"
-	case "time.Time", "spanner.NullTime":
-		return "TIMESTAMP"
-	case "civil.Date", "spanner.NullDate":
-		return "DATE"
-	case "big.Rat", "spanner.NullNumeric":
-		return "NUMERIC"
+	if t, ok := s.columnTypeMap[name]; ok {
+		n, _, _, _ := t.findType(name)
+		return n
 	}
 	if strings.HasPrefix(name, "[]") {
 		return fmt.Sprintf("ARRAY<%s>", s.ColumnType(name[2:]))
 	}
 	return strings.ToUpper(name)
+}
+
+func (s *Spanner) GoType(name string, nullable bool) string {
+	name = strings.ToUpper(name)
+	if prefix := "ARRAY<"; strings.HasPrefix(name, prefix) {
+		start := len(prefix)
+		end := strings.LastIndexByte(name, '>')
+		return fmt.Sprintf("[]%s", s.GoType(name[start:end], false))
+	}
+	for _, t := range spannerColumnTypes {
+		if typ, found := t.findGoType(name, nullable, false); found {
+			return typ
+		}
+	}
+	if end := strings.IndexByte(name, '('); end >= 0 {
+		return s.GoType(name[:end]+"(MAX)", nullable)
+	}
+	return "interface{}"
 }
 
 func (s *Spanner) ImportPackage(schema ColumnSchema) string {

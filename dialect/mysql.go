@@ -9,15 +9,74 @@ import (
 
 var _ PrimaryKeyModifier = &MySQL{}
 
+var (
+	mysqlColumnTypes = []*ColumnType{
+		{
+			Types:           []string{"VARCHAR", "TEXT", "MEDIUMTEXT", "LONGTEXT", "CHAR"},
+			GoTypes:         []string{"string"},
+			GoNullableTypes: []string{"*string", "sql.NullString"},
+		},
+		{
+			Types:           []string{"VARBINARY", "BINARY"},
+			GoTypes:         []string{"[]byte"},
+			GoNullableTypes: []string{"[]byte"},
+		},
+		{
+			Types:           []string{"INT", "MEDIUMINT"},
+			GoTypes:         []string{"int", "int32"},
+			GoUnsignedTypes: []string{"uint", "uint32"},
+		},
+		{
+			Types:           []string{"TINYINT"},
+			GoTypes:         []string{"int8"},
+			GoUnsignedTypes: []string{"uint8"},
+		},
+		{
+			Types:           []string{"TINYINT(1)"},
+			GoTypes:         []string{"bool"},
+			GoNullableTypes: []string{"*bool", "sql.NullBool"},
+		},
+		{
+			Types:           []string{"SMALLINT"},
+			GoTypes:         []string{"int16"},
+			GoUnsignedTypes: []string{"uint16"},
+		},
+		{
+			Types:           []string{"BIGINT"},
+			GoTypes:         []string{"int64"},
+			GoUnsignedTypes: []string{"uint64"},
+			GoNullableTypes: []string{"*int64", "sql.NullInt64"},
+		},
+		{
+			Types:           []string{"DOUBLE", "FLOAT", "DECIMAL"},
+			GoTypes:         []string{"float64", "float32"},
+			GoNullableTypes: []string{"*float64", "sql.NullFloat64"},
+		},
+		{
+			Types:           []string{"DATETIME"},
+			GoTypes:         []string{"time.Time"},
+			GoNullableTypes: []string{"*time.Time", "mysql.NullTime", "gorp.NullTime"},
+		},
+	}
+)
+
 type MySQL struct {
-	db      *sql.DB
-	dbName  string
-	version *mysqlVersion
+	db            *sql.DB
+	dbName        string
+	version       *mysqlVersion
+	columnTypeMap map[string]*ColumnType
 }
 
 func NewMySQL(db *sql.DB) Dialect {
+	columnTypeMap := map[string]*ColumnType{}
+	for _, t := range mysqlColumnTypes {
+		for _, tt := range t.allGoTypes() {
+			columnTypeMap[tt] = t
+		}
+	}
 	return &MySQL{
-		db: db,
+		db:            db,
+		columnTypeMap: columnTypeMap,
 	}
 }
 
@@ -107,12 +166,32 @@ func (d *MySQL) ColumnSchema(tables ...string) ([]ColumnSchema, error) {
 }
 
 func (d *MySQL) ColumnType(name string) string {
-	name, unsigned := d.columnType(name)
+	var unsigned bool
+	if t, ok := d.columnTypeMap[name]; ok {
+		name, _, unsigned, _ = t.findType(name)
+	}
 	name = d.defaultColumnType(name)
 	if unsigned {
 		name += " UNSIGNED"
 	}
 	return strings.ToUpper(name)
+}
+
+func (d *MySQL) GoType(name string, nullable bool) string {
+	name = strings.ToUpper(name)
+	var unsigned bool
+	if i := strings.IndexByte(name, ' '); i >= 0 {
+		name, unsigned = name[:i], name[i+1:] == "UNSIGNED"
+	}
+	for _, t := range mysqlColumnTypes {
+		if typ, found := t.findGoType(name, nullable, unsigned); found {
+			return typ
+		}
+	}
+	if strings.IndexByte(name, '(') >= 0 {
+		return d.GoType(trimParens(name), nullable)
+	}
+	return "interface{}"
 }
 
 func (d *MySQL) ImportPackage(schema ColumnSchema) string {
@@ -244,48 +323,6 @@ func (d *MySQL) Begin() (Transactioner, error) {
 	}, nil
 }
 
-func (d *MySQL) columnType(name string) (typ string, unsigned bool) {
-	switch name {
-	case "string":
-		return "VARCHAR", false
-	case "sql.NullString":
-		return "VARCHAR", false
-	case "[]byte":
-		return "VARBINARY", false
-	case "int", "int32":
-		return "INT", false
-	case "int8":
-		return "TINYINT", false
-	case "bool":
-		return "TINYINT(1)", false
-	case "sql.NullBool":
-		return "TINYINT(1)", false
-	case "int16":
-		return "SMALLINT", false
-	case "int64":
-		return "BIGINT", false
-	case "sql.NullInt64":
-		return "BIGINT", false
-	case "uint", "uint32":
-		return "INT", true
-	case "uint8":
-		return "TINYINT", true
-	case "uint16":
-		return "SMALLINT", true
-	case "uint64":
-		return "BIGINT", true
-	case "float32", "float64":
-		return "DOUBLE", false
-	case "sql.NullFloat64":
-		return "DOUBLE", false
-	case "time.Time":
-		return "DATETIME", false
-	case "mysql.NullTime", "gorp.NullTime":
-		return "DATETIME", false
-	}
-	return name, false
-}
-
 func (d *MySQL) defaultColumnType(name string) string {
 	switch name := strings.ToUpper(name); name {
 	case "BIT":
@@ -407,4 +444,23 @@ func (m *mysqlTransaction) Commit() error {
 
 func (m *mysqlTransaction) Rollback() error {
 	return m.tx.Rollback()
+}
+
+func trimParens(s string) string {
+	start, end := -1, -1
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '(' {
+			start = i
+			continue
+		}
+		if c == ')' {
+			end = i
+			break
+		}
+	}
+	if start < 0 || end < 0 {
+		return s
+	}
+	return s[:start] + s[end+1:]
 }

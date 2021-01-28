@@ -37,79 +37,6 @@ func (schema *mysqlColumnSchema) ColumnName() string {
 	return schema.columnName
 }
 
-func (schema *mysqlColumnSchema) GoType() string {
-	switch schema.dataType {
-	case "tinyint":
-		if schema.isUnsigned() {
-			if schema.IsNullable() {
-				return "*uint8"
-			}
-			return "uint8"
-		}
-		if schema.columnType == "tinyint(1)" {
-			if schema.IsNullable() {
-				return "*bool"
-			}
-			return "bool"
-		}
-		if schema.IsNullable() {
-			return "*int8"
-		}
-		return "int8"
-	case "smallint":
-		if schema.isUnsigned() {
-			if schema.IsNullable() {
-				return "*uint16"
-			}
-			return "uint16"
-		}
-		if schema.IsNullable() {
-			return "*int16"
-		}
-		return "int16"
-	case "mediumint", "int":
-		if schema.isUnsigned() {
-			if schema.IsNullable() {
-				return "*uint"
-			}
-			return "uint"
-		}
-		if schema.IsNullable() {
-			return "*int"
-		}
-		return "int"
-	case "bigint":
-		if schema.isUnsigned() {
-			if schema.IsNullable() {
-				return "*uint64"
-			}
-			return "uint64"
-		}
-		if schema.IsNullable() {
-			return "*int64"
-		}
-		return "int64"
-	case "varchar", "text", "mediumtext", "longtext", "char":
-		if schema.IsNullable() {
-			return "*string"
-		}
-		return "string"
-	case "varbinary", "binary":
-		return "[]byte"
-	case "datetime":
-		if schema.IsNullable() {
-			return "*time.Time"
-		}
-		return "time.Time"
-	case "double", "float", "decimal":
-		if schema.IsNullable() {
-			return "*float64"
-		}
-		return "float64"
-	}
-	return "interface{}"
-}
-
 func (schema *mysqlColumnSchema) ColumnType() string {
 	typ := schema.columnType
 	switch schema.dataType {
@@ -119,22 +46,7 @@ func (schema *mysqlColumnSchema) ColumnType() string {
 		}
 		// NOTE: As of MySQL 8.0.17, the display width attribute is deprecated for integer data types.
 		//		 See https://dev.mysql.com/doc/refman/8.0/en/numeric-type-syntax.html
-		start, end := -1, -1
-		for i := 0; i < len(typ); i++ {
-			c := typ[i]
-			if c == '(' {
-				start = i
-				continue
-			}
-			if c == ')' {
-				end = i
-				break
-			}
-		}
-		if start < 0 || end < 0 {
-			return typ
-		}
-		return typ[:start] + typ[end+1:]
+		return trimParens(typ)
 	}
 	return typ
 }
