@@ -318,7 +318,7 @@ func (d *MySQL) columnSQL(f Field) string {
 
 func (d *MySQL) isTextType(f Field) bool {
 	typ := strings.ToUpper(f.Type)
-	for _, t := range []string{"VARCHAR", "CHAR", "TEXT", "MIDIUMTEXT", "LONGTEXt"} {
+	for _, t := range []string{"VARCHAR", "CHAR", "TEXT", "MIDIUMTEXT", "LONGTEXT"} {
 		if strings.HasPrefix(typ, t) {
 			return true
 		}
