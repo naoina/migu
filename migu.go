@@ -25,25 +25,6 @@ const (
 	annotationSeparator = ':'
 )
 
-var (
-	void            = struct{}{}
-	nullableTypeMap = map[string]struct{}{
-		"sql.NullString":      void,
-		"sql.NullBool":        void,
-		"sql.NullInt64":       void,
-		"sql.NullFloat64":     void,
-		"mysql.NullTime":      void,
-		"gorp.NullTime":       void,
-		"spanner.NullString":  void,
-		"spanner.NullFloat64": void,
-		"spanner.NullBool":    void,
-		"spanner.NullInt64":   void,
-		"spanner.NullTime":    void,
-		"spanner.NullDate":    void,
-		"spanner.NullNumeric": void,
-	}
-)
-
 // Sync synchronizes the schema between Go's struct and the database.
 // Go's struct may be provided via the filename of the source file, or via
 // the src parameter.
@@ -312,8 +293,7 @@ func newField(d dialect.Dialect, tableName string, typeName string, f *ast.Field
 		if ret.GoType[0] == '*' {
 			ret.Nullable = true
 		} else {
-			_, ok := nullableTypeMap[strings.TrimLeft(ret.GoType, "*")]
-			ret.Nullable = ok
+			ret.Nullable = d.IsNullable(strings.TrimLeft(ret.GoType, "*"))
 		}
 	}
 	var colType string

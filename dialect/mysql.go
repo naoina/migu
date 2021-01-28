@@ -61,10 +61,11 @@ var (
 )
 
 type MySQL struct {
-	db            *sql.DB
-	dbName        string
-	version       *mysqlVersion
-	columnTypeMap map[string]*ColumnType
+	db              *sql.DB
+	dbName          string
+	version         *mysqlVersion
+	columnTypeMap   map[string]*ColumnType
+	nullableTypeMap map[string]struct{}
 }
 
 func NewMySQL(db *sql.DB) Dialect {
@@ -74,9 +75,16 @@ func NewMySQL(db *sql.DB) Dialect {
 			columnTypeMap[tt] = t
 		}
 	}
+	nullableTypeMap := map[string]struct{}{}
+	for _, t := range mysqlColumnTypes {
+		for _, tt := range t.filteredNullableGoTypes() {
+			nullableTypeMap[tt] = struct{}{}
+		}
+	}
 	return &MySQL{
-		db:            db,
-		columnTypeMap: columnTypeMap,
+		db:              db,
+		columnTypeMap:   columnTypeMap,
+		nullableTypeMap: nullableTypeMap,
 	}
 }
 
@@ -192,6 +200,11 @@ func (d *MySQL) GoType(name string, nullable bool) string {
 		return d.GoType(trimParens(name), nullable)
 	}
 	return "interface{}"
+}
+
+func (d *MySQL) IsNullable(name string) bool {
+	_, ok := d.nullableTypeMap[name]
+	return ok
 }
 
 func (d *MySQL) ImportPackage(schema ColumnSchema) string {

@@ -60,10 +60,11 @@ var (
 )
 
 type Spanner struct {
-	ac            *database.DatabaseAdminClient
-	c             *spanner.Client
-	database      string
-	columnTypeMap map[string]*ColumnType
+	ac              *database.DatabaseAdminClient
+	c               *spanner.Client
+	database        string
+	columnTypeMap   map[string]*ColumnType
+	nullableTypeMap map[string]struct{}
 }
 
 func NewSpanner(database string) Dialect {
@@ -73,9 +74,16 @@ func NewSpanner(database string) Dialect {
 			columnTypeMap[tt] = t
 		}
 	}
+	nullableTypeMap := map[string]struct{}{}
+	for _, t := range spannerColumnTypes {
+		for _, tt := range t.filteredNullableGoTypes() {
+			nullableTypeMap[tt] = struct{}{}
+		}
+	}
 	return &Spanner{
-		database:      database,
-		columnTypeMap: columnTypeMap,
+		database:        database,
+		columnTypeMap:   columnTypeMap,
+		nullableTypeMap: nullableTypeMap,
 	}
 }
 
@@ -191,6 +199,11 @@ func (s *Spanner) GoType(name string, nullable bool) string {
 		return s.GoType(name[:end]+"(MAX)", nullable)
 	}
 	return "interface{}"
+}
+
+func (s *Spanner) IsNullable(name string) bool {
+	_, ok := s.nullableTypeMap[name]
+	return ok
 }
 
 func (s *Spanner) ImportPackage(schema ColumnSchema) string {

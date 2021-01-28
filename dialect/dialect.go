@@ -4,6 +4,7 @@ type Dialect interface {
 	ColumnSchema(tables ...string) ([]ColumnSchema, error)
 	ColumnType(name string) string
 	GoType(name string, nullable bool) string
+	IsNullable(name string) bool
 	ImportPackage(schema ColumnSchema) string
 	Quote(s string) string
 	QuoteString(s string) string
@@ -111,4 +112,14 @@ func (c *ColumnType) findGoType(name string, nullable, unsigned bool) (typ strin
 func (c *ColumnType) allGoTypes() []string {
 	ret := make([]string, 0, len(c.GoTypes)+len(c.GoNullableTypes)+len(c.GoUnsignedTypes))
 	return append(append(append(ret, c.GoTypes...), c.GoNullableTypes...), c.GoUnsignedTypes...)
+}
+
+func (c *ColumnType) filteredNullableGoTypes() []string {
+	ret := make([]string, 0, len(c.GoNullableTypes))
+	for _, t := range c.GoNullableTypes {
+		if c := t[0]; c != '*' && c != '[' {
+			ret = append(ret, t)
+		}
+	}
+	return ret
 }
