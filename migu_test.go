@@ -17,7 +17,7 @@ import (
 	"github.com/naoina/migu/dialect"
 )
 
-var d dialect.Dialect
+var db *sql.DB
 
 func TestMain(m *testing.M) {
 	dbHost := os.Getenv("DB_HOST")
@@ -25,11 +25,9 @@ func TestMain(m *testing.M) {
 		dbHost = "localhost"
 	}
 	var err error
-	db, err := sql.Open("mysql", fmt.Sprintf("root@tcp(%s)/migu_test", dbHost))
-	if err != nil {
+	if db, err = sql.Open("mysql", fmt.Sprintf("root@tcp(%s)/migu_test", dbHost)); err != nil {
 		panic(err)
 	}
-	d = dialect.NewMySQL(db)
 	os.Exit(func() int {
 		defer db.Close()
 		return m.Run()
@@ -37,7 +35,7 @@ func TestMain(m *testing.M) {
 }
 
 func exec(queries []string) (err error) {
-	tx, err := d.Begin()
+	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
@@ -49,7 +47,7 @@ func exec(queries []string) (err error) {
 		err = tx.Commit()
 	}()
 	for _, query := range queries {
-		if err := tx.Exec(query); err != nil {
+		if _, err := tx.Exec(query); err != nil {
 			return err
 		}
 	}
@@ -67,6 +65,7 @@ func before(t *testing.T) {
 }
 
 func TestDiff(t *testing.T) {
+	d := dialect.NewMySQL(db)
 	t.Run("idempotency", func(t *testing.T) {
 		before(t)
 		for _, v := range []struct {
@@ -853,6 +852,7 @@ func TestDiffWithSrc(t *testing.T) {
 }
 
 func testDiffWithSrc(t *testing.T, t1, s1, t2, s2 string) {
+	d := dialect.NewMySQL(db)
 	src := fmt.Sprintf("package migu_test\n"+
 		"//+migu\n"+
 		"type User struct {\n"+
@@ -928,6 +928,7 @@ func testDiffWithSrc(t *testing.T, t1, s1, t2, s2 string) {
 }
 
 func TestDiffWithColumn(t *testing.T) {
+	d := dialect.NewMySQL(db)
 	before(t)
 	src := fmt.Sprintf("package migu_test\n" +
 		"//+migu\n" +
@@ -949,6 +950,7 @@ func TestDiffWithColumn(t *testing.T) {
 }
 
 func TestDiffWithExtraField(t *testing.T) {
+	d := dialect.NewMySQL(db)
 	before(t)
 	src := fmt.Sprintf("package migu_test\n" +
 		"//+migu\n" +
@@ -974,6 +976,7 @@ func TestDiffWithExtraField(t *testing.T) {
 }
 
 func TestDiffMarker(t *testing.T) {
+	d := dialect.NewMySQL(db)
 	before(t)
 	for _, v := range []struct {
 		comment string
@@ -1062,6 +1065,7 @@ func TestDiffMarker(t *testing.T) {
 }
 
 func TestDiffAnnotation(t *testing.T) {
+	d := dialect.NewMySQL(db)
 	before(t)
 	for _, v := range []struct {
 		i         int
@@ -1142,6 +1146,7 @@ func TestDiffAnnotation(t *testing.T) {
 }
 
 func TestDiffDropTable(t *testing.T) {
+	d := dialect.NewMySQL(db)
 	before(t)
 	for _, v := range []struct {
 		table string
@@ -1170,6 +1175,7 @@ func TestDiffDropTable(t *testing.T) {
 }
 
 func TestFprint(t *testing.T) {
+	d := dialect.NewMySQL(db)
 	before(t)
 	for _, v := range []struct {
 		i      int

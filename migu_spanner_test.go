@@ -13,36 +13,40 @@ import (
 	"time"
 
 	"cloud.google.com/go/spanner"
+	database "cloud.google.com/go/spanner/admin/database/apiv1"
 	"github.com/google/go-cmp/cmp"
 	"github.com/naoina/migu"
 	"github.com/naoina/migu/dialect"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	databasepb "google.golang.org/genproto/googleapis/spanner/admin/database/v1"
 	"google.golang.org/grpc"
 )
 
-var d dialect.Dialect
+var dsn string
 var client *spanner.Client
+var adminClient *database.DatabaseAdminClient
 
 func exec(queries []string) (err error) {
-	tx, err := d.Begin()
+	if len(queries) == 0 {
+		return nil
+	}
+	stmts := make([]spanner.Statement, len(queries))
+	for i, query := range queries {
+		stmts[i] = spanner.NewStatement(query)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	op, err := adminClient.UpdateDatabaseDdl(ctx, &databasepb.UpdateDatabaseDdlRequest{
+		Database:   dsn,
+		Statements: queries,
+	})
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-			return
-		}
-		err = tx.Commit()
-	}()
-	for _, query := range queries {
-		if err := tx.Exec(query); err != nil {
-			return err
-		}
-	}
-	return nil
+	return op.Wait(ctx)
 }
+
 func cleanup(t *testing.T) {
 	iter := client.Single().Query(context.Background(), spanner.NewStatement(`SELECT index_name FROM information_schema.indexes WHERE index_name != "PRIMARY_KEY"`))
 	var indexes []string
@@ -98,9 +102,8 @@ func TestMain(m *testing.M) {
 	}
 	project := os.Getenv("SPANNER_PROJECT_ID")
 	instance := os.Getenv("SPANNER_INSTANCE_ID")
-	database := os.Getenv("SPANNER_DATABASE_ID")
-	dsn := path.Join("projects", project, "instances", instance, "databases", database)
-	d = dialect.NewSpanner(dsn)
+	dbname := os.Getenv("SPANNER_DATABASE_ID")
+	dsn = path.Join("projects", project, "instances", instance, "databases", dbname)
 	c, err := spanner.NewClient(context.Background(), dsn,
 		option.WithGRPCDialOption(grpc.WithBlock()),
 		option.WithGRPCDialOption(grpc.WithTimeout(1*time.Second)),
@@ -110,12 +113,22 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	client = c
+	ac, err := database.NewDatabaseAdminClient(context.Background(),
+		option.WithGRPCDialOption(grpc.WithBlock()),
+		option.WithGRPCDialOption(grpc.WithTimeout(1*time.Second)),
+		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.WaitForReady(false))),
+	)
+	if err != nil {
+		panic(err)
+	}
+	adminClient = ac
 	os.Exit(func() int {
 		return m.Run()
 	}())
 }
 
 func TestDiff(t *testing.T) {
+	d := dialect.NewSpanner(dsn)
 	t.Run("idempotency", func(t *testing.T) {
 		for _, v := range []struct {
 			column string
@@ -952,6 +965,7 @@ func TestDiff(t *testing.T) {
 }
 
 func TestFprint(t *testing.T) {
+	d := dialect.NewSpanner(dsn)
 	for _, v := range []struct {
 		i    int
 		sqls []string
