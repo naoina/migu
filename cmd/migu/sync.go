@@ -48,6 +48,10 @@ func (s *sync) Execute(args []string, opt *Option) error {
 	default:
 		return fmt.Errorf("too many arguments")
 	}
+	var opts []dialect.Option
+	if columnTypes := opt.global.ColumnTypes; len(columnTypes) != 0 {
+		opts = append(opts, dialect.WithColumnType(columnTypes))
+	}
 	var di dialect.Dialect
 	switch typ := opt.global.DatabaseType; typ {
 	case databaseTypeMySQL, databaseTypeMariaDB:
@@ -56,9 +60,9 @@ func (s *sync) Execute(args []string, opt *Option) error {
 			return err
 		}
 		defer db.Close()
-		di = dialect.NewMySQL(db)
+		di = dialect.NewMySQL(db, opts...)
 	case databaseTypeSpanner:
-		di = dialect.NewSpanner(path.Join("projects", opt.spanner.Project, "instances", opt.spanner.Instance, "databases", dbname))
+		di = dialect.NewSpanner(path.Join("projects", opt.spanner.Project, "instances", opt.spanner.Instance, "databases", dbname), opts...)
 	default:
 		return fmt.Errorf("BUG: unknown database type: %s", typ)
 	}

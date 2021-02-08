@@ -7,7 +7,9 @@ import (
 	"os"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/goccy/go-yaml"
 	"github.com/howeyc/gopass"
+	"github.com/naoina/migu/dialect"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -24,7 +26,17 @@ var (
 		Use:   progName,
 		Short: "An idempotent database schema migration tool",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return validateFlags(option)
+			if err := validateFlags(option); err != nil {
+				return err
+			}
+			if fname := option.global.columnTypeFile; fname != "" {
+				columnTypes, err := readColumnTypeFromFile(option.global.columnTypeFile)
+				if err != nil {
+					return err
+				}
+				option.global.ColumnTypes = columnTypes
+			}
+			return nil
 		},
 	}
 	option      = &Option{}
@@ -37,6 +49,9 @@ var (
 type Option struct {
 	global struct {
 		DatabaseType string
+		ColumnTypes  []*dialect.ColumnType
+
+		columnTypeFile string
 	}
 	mysql struct {
 		User     string
@@ -54,6 +69,7 @@ type Option struct {
 func init() {
 	flagsForGlobal := pflag.NewFlagSet("Global", pflag.ContinueOnError)
 	flagsForGlobal.StringVarP(&option.global.DatabaseType, "type", "t", databaseTypeMySQL, "Specify the database type (mysql|mariadb|spanner)")
+	flagsForGlobal.StringVar(&option.global.columnTypeFile, "column-type-file", "", "Use the definition file of custom column types. Supported format is YAML")
 
 	flagsForMySQL := pflag.NewFlagSet("MySQL/MariaDB", pflag.ContinueOnError)
 	flagsForMySQL.StringVarP(&option.mysql.Host, "host", "h", "", "Connect to host of database")
@@ -136,6 +152,19 @@ func openDatabase(dbname string) (db *sql.DB, err error) {
 	}
 	config.DBName = dbname
 	return sql.Open("mysql", config.FormatDSN())
+}
+
+func readColumnTypeFromFile(fname string) ([]*dialect.ColumnType, error) {
+	f, err := os.Open(fname)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read column type file: %w", err)
+	}
+	defer f.Close()
+	var columnTypes []*dialect.ColumnType
+	if err := yaml.NewDecoder(f, yaml.DisallowDuplicateKey()).Decode(&columnTypes); err != nil {
+		return nil, fmt.Errorf("failed to decode column type file: %w", err)
+	}
+	return columnTypes, nil
 }
 
 func validateFlags(opt *Option) error {
