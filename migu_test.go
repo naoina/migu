@@ -797,6 +797,62 @@ func TestDiff(t *testing.T) {
 			t.Errorf("(-got +want)\n%v", diff)
 		}
 	})
+
+	t.Run("custom column type", func(t *testing.T) {
+		d := dialect.NewMySQL(db, dialect.WithColumnType([]*dialect.ColumnType{
+			{
+				Types:           []string{"VARCHAR"},
+				GoTypes:         []string{"UUID"},
+				GoNullableTypes: []string{"NullUUID"},
+			},
+			{
+				Types:           []string{"TEXT"},
+				GoTypes:         []string{"string"},
+				GoNullableTypes: []string{"*string", "sql.NullString"},
+			},
+			{
+				Types:   []string{"TINYINT"},
+				GoTypes: []string{"Status"},
+			},
+			{
+				Types:   []string{"BIGINT"},
+				GoTypes: []string{"int"},
+			},
+		}))
+		before(t)
+		got, err := migu.Diff(d, "", strings.Join([]string{
+			"package migu_test",
+			"//+migu",
+			"type User struct {",
+			"	ID UUID",
+			"	Name string",
+			"	Nickname sql.NullString",
+			"	Status Status",
+			"	Child NullUUID",
+			"	Amount int",
+			"	Views int64",
+			"}",
+		}, "\n"))
+		if err != nil {
+			t.Fatalf("%+v\n", err)
+		}
+		want := []string{
+			strings.Join([]string{
+				"CREATE TABLE `user` (",
+				"  `id` VARCHAR(255) NOT NULL,",
+				"  `name` TEXT NOT NULL,",
+				"  `nickname` TEXT,",
+				"  `status` TINYINT NOT NULL,",
+				"  `child` VARCHAR(255),",
+				"  `amount` BIGINT NOT NULL,",
+				"  `views` BIGINT NOT NULL",
+				")",
+			}, "\n"),
+		}
+		if diff := cmp.Diff(got, want); diff != "" {
+			t.Errorf("(-got +want)\n%v", diff)
+		}
+	})
 }
 
 func TestDiffWithSrc(t *testing.T) {

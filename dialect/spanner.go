@@ -9,7 +9,7 @@ import (
 	"cloud.google.com/go/spanner"
 	database "cloud.google.com/go/spanner/admin/database/apiv1"
 	"google.golang.org/api/iterator"
-	"google.golang.org/api/option"
+	apioption "google.golang.org/api/option"
 	databasepb "google.golang.org/genproto/googleapis/spanner/admin/database/v1"
 	"google.golang.org/grpc"
 )
@@ -63,28 +63,32 @@ type Spanner struct {
 	ac              *database.DatabaseAdminClient
 	c               *spanner.Client
 	database        string
+	opt             *option
 	columnTypeMap   map[string]*ColumnType
 	nullableTypeMap map[string]struct{}
 }
 
-func NewSpanner(database string) Dialect {
-	columnTypeMap := map[string]*ColumnType{}
-	for _, t := range spannerColumnTypes {
-		for _, tt := range t.allGoTypes() {
-			columnTypeMap[tt] = t
-		}
-	}
-	nullableTypeMap := map[string]struct{}{}
-	for _, t := range spannerColumnTypes {
-		for _, tt := range t.filteredNullableGoTypes() {
-			nullableTypeMap[tt] = struct{}{}
-		}
-	}
-	return &Spanner{
+func NewSpanner(database string, opts ...Option) Dialect {
+	d := &Spanner{
 		database:        database,
-		columnTypeMap:   columnTypeMap,
-		nullableTypeMap: nullableTypeMap,
+		opt:             newOption(),
+		columnTypeMap:   map[string]*ColumnType{},
+		nullableTypeMap: map[string]struct{}{},
 	}
+	for _, o := range opts {
+		o(d.opt)
+	}
+	for _, types := range [][]*ColumnType{spannerColumnTypes, d.opt.columnTypes} {
+		for _, t := range types {
+			for _, tt := range t.allGoTypes() {
+				d.columnTypeMap[tt] = t
+			}
+			for _, tt := range t.filteredNullableGoTypes() {
+				d.nullableTypeMap[tt] = struct{}{}
+			}
+		}
+	}
+	return d
 }
 
 func (s *Spanner) ColumnSchema(tables ...string) ([]ColumnSchema, error) {
@@ -319,9 +323,9 @@ func (d *Spanner) client() (*spanner.Client, error) {
 		return d.c, nil
 	}
 	c, err := spanner.NewClient(context.Background(), d.database,
-		option.WithGRPCDialOption(grpc.WithBlock()),
-		option.WithGRPCDialOption(grpc.WithTimeout(1*time.Second)),
-		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.WaitForReady(false))),
+		apioption.WithGRPCDialOption(grpc.WithBlock()),
+		apioption.WithGRPCDialOption(grpc.WithTimeout(1*time.Second)),
+		apioption.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.WaitForReady(false))),
 	)
 	if err != nil {
 		return nil, err
@@ -335,9 +339,9 @@ func (d *Spanner) adminClient() (*database.DatabaseAdminClient, error) {
 		return d.ac, nil
 	}
 	c, err := database.NewDatabaseAdminClient(context.Background(),
-		option.WithGRPCDialOption(grpc.WithBlock()),
-		option.WithGRPCDialOption(grpc.WithTimeout(1*time.Second)),
-		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.WaitForReady(false))),
+		apioption.WithGRPCDialOption(grpc.WithBlock()),
+		apioption.WithGRPCDialOption(grpc.WithTimeout(1*time.Second)),
+		apioption.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.WaitForReady(false))),
 	)
 	if err != nil {
 		return nil, err

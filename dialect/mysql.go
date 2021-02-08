@@ -64,28 +64,32 @@ type MySQL struct {
 	db              *sql.DB
 	dbName          string
 	version         *mysqlVersion
+	opt             *option
 	columnTypeMap   map[string]*ColumnType
 	nullableTypeMap map[string]struct{}
 }
 
-func NewMySQL(db *sql.DB) Dialect {
-	columnTypeMap := map[string]*ColumnType{}
-	for _, t := range mysqlColumnTypes {
-		for _, tt := range t.allGoTypes() {
-			columnTypeMap[tt] = t
-		}
-	}
-	nullableTypeMap := map[string]struct{}{}
-	for _, t := range mysqlColumnTypes {
-		for _, tt := range t.filteredNullableGoTypes() {
-			nullableTypeMap[tt] = struct{}{}
-		}
-	}
-	return &MySQL{
+func NewMySQL(db *sql.DB, opts ...Option) Dialect {
+	d := &MySQL{
 		db:              db,
-		columnTypeMap:   columnTypeMap,
-		nullableTypeMap: nullableTypeMap,
+		opt:             newOption(),
+		columnTypeMap:   map[string]*ColumnType{},
+		nullableTypeMap: map[string]struct{}{},
 	}
+	for _, o := range opts {
+		o(d.opt)
+	}
+	for _, types := range [][]*ColumnType{mysqlColumnTypes, d.opt.columnTypes} {
+		for _, t := range types {
+			for _, tt := range t.allGoTypes() {
+				d.columnTypeMap[tt] = t
+			}
+			for _, tt := range t.filteredNullableGoTypes() {
+				d.nullableTypeMap[tt] = struct{}{}
+			}
+		}
+	}
+	return d
 }
 
 func (d *MySQL) ColumnSchema(tables ...string) ([]ColumnSchema, error) {

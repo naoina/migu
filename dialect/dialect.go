@@ -69,10 +69,10 @@ type Index struct {
 }
 
 type ColumnType struct {
-	Types           []string
-	GoTypes         []string
-	GoNullableTypes []string
-	GoUnsignedTypes []string
+	Types           []string `yaml:"types"`
+	GoTypes         []string `yaml:"goTypes"`
+	GoNullableTypes []string `yaml:"goNullableTypes"`
+	GoUnsignedTypes []string `yaml:"goUnsignedTypes"`
 }
 
 func (c *ColumnType) findType(t string) (name string, nullable, unsigned, found bool) {

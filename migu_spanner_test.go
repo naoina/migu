@@ -962,6 +962,62 @@ func TestDiff(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("custom column type", func(t *testing.T) {
+		defer cleanup(t)
+		d := dialect.NewSpanner(dsn, dialect.WithColumnType([]*dialect.ColumnType{
+			{
+				Types:           []string{"STRING(MAX)"},
+				GoTypes:         []string{"UUID"},
+				GoNullableTypes: []string{"NullUUID"},
+			},
+			{
+				Types:           []string{"STRING(256)"},
+				GoTypes:         []string{"string"},
+				GoNullableTypes: []string{"*string", "sql.NullString"},
+			},
+			{
+				Types:   []string{"INT64"},
+				GoTypes: []string{"Status"},
+			},
+			{
+				Types:   []string{"FLOAT64"},
+				GoTypes: []string{"int16"},
+			},
+		}))
+		got, err := migu.Diff(d, "", strings.Join([]string{
+			"package migu_test",
+			"//+migu",
+			"type User struct {",
+			"	ID UUID `migu:\"pk\"`",
+			"	Name string",
+			"	Nickname sql.NullString",
+			"	Status Status",
+			"	Child NullUUID",
+			"	Amount int",
+			"	Views int16",
+			"}",
+		}, "\n"))
+		if err != nil {
+			t.Fatalf("%+v\n", err)
+		}
+		want := []string{
+			strings.Join([]string{
+				"CREATE TABLE `user` (",
+				"  `id` STRING(MAX) NOT NULL,",
+				"  `name` STRING(256) NOT NULL,",
+				"  `nickname` STRING(256),",
+				"  `status` INT64 NOT NULL,",
+				"  `child` STRING(MAX),",
+				"  `amount` INT64 NOT NULL,",
+				"  `views` FLOAT64 NOT NULL",
+				") PRIMARY KEY (`id`)",
+			}, "\n"),
+		}
+		if diff := cmp.Diff(got, want); diff != "" {
+			t.Errorf("(-got +want)\n%v", diff)
+		}
+	})
 }
 
 func TestFprint(t *testing.T) {
