@@ -15,14 +15,15 @@ import (
 )
 
 const (
+	progName = "migu"
+
 	databaseTypeMySQL   = "mysql"
 	databaseTypeMariaDB = "mariadb"
 	databaseTypeSpanner = "spanner"
 )
 
 var (
-	progName = os.Args[0]
-	rootCmd  = &cobra.Command{
+	rootCmd = &cobra.Command{
 		Use:   progName,
 		Short: "An idempotent database schema migration tool",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
