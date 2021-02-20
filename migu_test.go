@@ -1,5 +1,3 @@
-//+build !spanner
-
 package migu_test
 
 import (
@@ -18,7 +16,9 @@ import (
 )
 
 func TestMySQL(t *testing.T) {
-	dbHost := os.Getenv("DB_HOST")
+	t.Parallel()
+
+	dbHost := os.Getenv("MIGU_DB_MYSQL_HOST")
 	if dbHost == "" {
 		dbHost = "localhost"
 	}

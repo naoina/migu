@@ -1,5 +1,3 @@
-//+build spanner
-
 package migu_test
 
 import (
@@ -24,7 +22,9 @@ import (
 )
 
 func TestSpanner(t *testing.T) {
-	dbHost := os.Getenv("DB_HOST")
+	t.Parallel()
+
+	dbHost := os.Getenv("MIGU_DB_SPANNER_HOST")
 	if dbHost == "" {
 		dbHost = "localhost"
 	}

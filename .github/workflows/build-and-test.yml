@@ -17,10 +17,6 @@ jobs:
           - mysql:5.7
           - mysql:latest
           - spanner
-        include:
-          - db: spanner
-            db_image: gcr.io/cloud-spanner-emulator/emulator:latest
-            build_tag: spanner
       fail-fast: false
     steps:
       - uses: actions/checkout@v2
@@ -28,6 +24,5 @@ jobs:
         run: |
           make \
             GO_VERSION=${{ matrix.go_version }} \
-            DB_IMAGE=${{ matrix.db_image || matrix.db }} \
-            BUILD_TAG=${{ matrix.build_tag }} \
+            TARGET_DB=${{ matrix.db }} \
             test-on-docker

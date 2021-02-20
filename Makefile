@@ -2,17 +2,17 @@ BIN_NAME="$(notdir $(PWD))"
 BUILDFLAGS := -tags netgo -installsuffix netgo -ldflags '-w -s --extldflags "-static"'
 GO_VERSION := 1.14
 GO_PACKAGE := "$(shell go list)"
-BUILD_TAG ?= mysql
-DB_IMAGE := mariadb:10.1.33
-# DB_IMAGE := gcr.io/cloud-spanner-emulator/emulator
-DB_ID := $(subst /,-,$(subst :,-,$(DB_IMAGE)))
-export DB_HOST := migu-test-db-$(DB_ID)
+export TARGET_DB ?= mariadb:10.1.33 spanner:latest
 DB_NAME := migu_test
-DOCKER_NETWORK := migu-test-net-$(DB_ID)
-DATADIR := /tmp/$(DB_HOST)
+DOCKER_NETWORK := migu-test-net
 export SPANNER_PROJECT_ID ?= dummy
 export SPANNER_INSTANCE_ID ?= migu-test-instance
 export SPANNER_DATABASE_ID ?= $(DB_NAME)
+export MIGU_DB_MYSQL_HOST := migu-test-mysql
+export MIGU_DB_SPANNER_HOST := migu-test-spanner
+MIGU_DB_HOSTS := $(MIGU_DB_MYSQL_HOST) $(MIGU_DB_SPANNER_HOST)
+
+target_dbs = $(foreach db,$(TARGET_DB),$(word 1,$(subst :, ,$(db))))
 
 .PHONY: all
 all: deps
@@ -22,35 +22,77 @@ all: deps
 deps:
 	go mod download
 
-.PHONY: test
-test:
-	go test -tags $(BUILD_TAG) ./...
+.PHONY: test/mysql
+test/mysql:
+	go test -run TestMySQL ./...
+
+.PHONY: test/mariadb
+test/mariadb:
+	go test -run TestMySQL ./...
+
+.PHONY: test/spanner
+test/spanner:
+	go test -run TestSpanner ./...
 
 .PHONY: test-all
 test-all: deps
 	@echo $(shell go version)
 	$(MAKE) test
 
-.PHONY: db
-db:
+.PHONY: test
+test: $(foreach db,$(target_dbs),test/$(db))
+
+.PHONY: docker-network
+docker-network:
 ifneq ($(DOCKER_NETWORK),host)
 	docker network inspect -f '{{.Name}}: {{.Id}}' $(DOCKER_NETWORK) || docker network create $(DOCKER_NETWORK)
 endif
-	docker container inspect -f='{{.Name}}: {{.Id}}' $(DB_HOST) || \
+
+define DB_mysql_template
+.PHONY: db/mysql
+db/mysql: docker-network
+	docker container inspect -f='{{.Name}}: {{.Id}}' $(MIGU_DB_MYSQL_HOST) || \
 		docker run \
-			--name=$(DB_HOST) \
-			-v $(DATADIR):/var/lib/mysql \
+			--name=$(MIGU_DB_MYSQL_HOST) \
+			-v /tmp/migu-test-db:/var/lib/mysql \
 			-e MYSQL_ALLOW_EMPTY_PASSWORD=1 \
 			-e MYSQL_DATABASE=$(DB_NAME) \
 			-d --rm --net=$(DOCKER_NETWORK) \
-			$(DB_IMAGE)
-ifneq (,$(findstring gcr.io/cloud-spanner-emulator/emulator,$(DB_IMAGE)))
+			mysql:$(or $(1),latest)
+endef
+
+define DB_mariadb_template
+.PHONY: db/mariadb
+db/mariadb: docker-network
+	docker container inspect -f='{{.Name}}: {{.Id}}' $(MIGU_DB_MYSQL_HOST) || \
+		docker run \
+			--name=$(MIGU_DB_MYSQL_HOST) \
+			-v /tmp/migu-test-db:/var/lib/mysql \
+			-e MYSQL_ALLOW_EMPTY_PASSWORD=1 \
+			-e MYSQL_DATABASE=$(DB_NAME) \
+			-d --rm --net=$(DOCKER_NETWORK) \
+			mariadb:$(or $(1),latest)
+endef
+
+define DB_spanner_template
+.PHONY: db/spanner
+db/spanner: docker-network
+	docker container inspect -f='{{.Name}}: {{.Id}}' $(MIGU_DB_SPANNER_HOST) || \
+		docker run \
+			--name=$(MIGU_DB_SPANNER_HOST) \
+			-d --rm --net=$(DOCKER_NETWORK) \
+			gcr.io/cloud-spanner-emulator/emulator:$(or $(1),latest)
 	sleep 5
 	docker run -d --rm --net=$(DOCKER_NETWORK) curlimages/curl \
-		curl -s $(DB_HOST):9020/v1/projects/$(SPANNER_PROJECT_ID)/instances --data '{"instanceId":"'$(SPANNER_INSTANCE_ID)'"}'
+		curl -s $(MIGU_DB_SPANNER_HOST):9020/v1/projects/$(SPANNER_PROJECT_ID)/instances --data '{"instanceId":"'$(SPANNER_INSTANCE_ID)'"}'
 	docker run -d --rm --net=$(DOCKER_NETWORK) curlimages/curl \
-		curl -s $(DB_HOST):9020/v1/projects/${SPANNER_PROJECT_ID}/instances/${SPANNER_INSTANCE_ID}/databases --data '{"createStatement": "CREATE DATABASE `'$(SPANNER_DATABASE_ID)'`"}'
-endif
+		curl -s $(MIGU_DB_SPANNER_HOST):9020/v1/projects/${SPANNER_PROJECT_ID}/instances/${SPANNER_INSTANCE_ID}/databases --data '{"createStatement": "CREATE DATABASE `'$(SPANNER_DATABASE_ID)'`"}'
+endef
+
+$(foreach db,$(TARGET_DB),$(eval $(call DB_$(word 1,$(subst :, ,$(db)))_template,$(word 2,$(subst :, ,$(db))))))
+
+.PHONY: db
+db: $(foreach db,$(target_dbs),db/$(db))
 
 .PHONY: test-on-docker
 define DOCKERFILE
@@ -71,12 +113,12 @@ endif
 		-w /go/src/$(GO_PACKAGE) \
 		--rm --net=$(DOCKER_NETWORK) \
 		golang:$(GO_VERSION) \
-		make DB_HOST=$(DB_HOST) BUILD_TAG=$(BUILD_TAG) test-all
+		make TARGET_DB="$(TARGET_DB)" test-all
 
 .PHONY: clean
 clean:
 	$(RM) -f $(BIN_NAME)
-	-docker kill $(DB_HOST)
+	-docker kill $(MIGU_DB_HOSTS)
 ifneq ($(DOCKER_NETWORK),host)
 	-docker network rm $(DOCKER_NETWORK)
 endif
