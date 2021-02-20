@@ -11,7 +11,7 @@ require (
 	github.com/naoina/go-stringutil v0.1.0
 	github.com/spf13/cobra v1.0.0
 	github.com/spf13/pflag v1.0.5
-	google.golang.org/api v0.39.0
+	google.golang.org/api v0.40.0
 	google.golang.org/genproto v0.0.0-20210207032614-bba0dbe2a9ea
 	google.golang.org/grpc v1.35.0
 )
