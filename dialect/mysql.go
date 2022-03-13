@@ -271,11 +271,13 @@ func (d *MySQL) ModifyPrimaryKeySQL(oldPrimaryKeys, newPrimaryKeys []Field) []st
 	if len(oldPrimaryKeys) > 0 {
 		specs = append(specs, "DROP PRIMARY KEY")
 	}
-	pkColumns := make([]string, len(newPrimaryKeys))
-	for i, pk := range newPrimaryKeys {
-		pkColumns[i] = d.Quote(pk.Name)
+	if len(newPrimaryKeys) > 0 {
+		pkColumns := make([]string, len(newPrimaryKeys))
+		for i, pk := range newPrimaryKeys {
+			pkColumns[i] = d.Quote(pk.Name)
+		}
+		specs = append(specs, fmt.Sprintf("ADD PRIMARY KEY (%s)", strings.Join(pkColumns, ", ")))
 	}
-	specs = append(specs, fmt.Sprintf("ADD PRIMARY KEY (%s)", strings.Join(pkColumns, ", ")))
 	return []string{fmt.Sprintf("ALTER TABLE %s %s", d.Quote(tableName), strings.Join(specs, ", "))}
 }
 
